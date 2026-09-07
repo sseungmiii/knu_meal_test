@@ -1,0 +1,35 @@
+name: Update KNU Menu
+
+on:
+  schedule:
+    # 매일 아침 7시 실행 (UTC 기준 22:00 = 한국 시간 KST 07:00)
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 라이브러리 설치
+        run: |
+          pip install -r requirements.txt
+
+      - name: 크롤링 실행
+        run: |
+          python get_menu.py
+
+      - name: 최신 menu.json 커밋 및 푸시
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add menu.json
+          git commit -m "Auto update menu.json" || exit 0
+          git push
