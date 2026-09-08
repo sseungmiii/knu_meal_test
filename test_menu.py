@@ -1,14 +1,16 @@
+import os
 import json
 import re
 import sys
 import time
+from urllib.parse import quote
 from datetime import datetime, timezone, timedelta
 import requests
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://coop.knu.ac.kr/sub03/sub01_01.html"
+SCRAPER_KEY = os.environ.get("SCRAPER_API_KEY", "").strip()
 
-# 고정 식당 ID 맵 (학교 방화벽으로 메인 메뉴 목록이 안 긁힐 때 대비)
 DEFAULT_SHOPS = {
     "정보센터식당": "35",
     "복지관 교직원식당": "36",
@@ -18,30 +20,24 @@ DEFAULT_SHOPS = {
     "공학관학생식당(외부업체)": "86"
 }
 
-# 실제 Chrome 브라우저 완벽 위장 헤더
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://coop.knu.ac.kr/",
-    "Connection": "keep-alive",
-    "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-    "Sec-Ch-Ua-Mobile": "?0",
-    "Sec-Ch-Ua-Platform": '"Windows"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1"
-}
-
 session = requests.Session()
-session.headers.update(headers)
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+})
 
-# 1. 식당 목록 파싱 (실패 시 DEFAULT_SHOPS 사용)
+def fetch_html(target_url):
+    # API 키가 환경변수로 있으면 ScraperAPI 프록시를 통해 우회 진입
+    if SCRAPER_KEY:
+        proxy_url = f"https://api.scraperapi.com?api_key={SCRAPER_KEY}&url={quote(target_url)}&country_code=kr"
+        return session.get(proxy_url, timeout=30)
+    else:
+        # 키가 없으면(로컬 환경 등) 직접 연결
+        return session.get(target_url, timeout=15)
+
+# 1. 식당 목록 파싱
 shops = {}
 try:
-    res_main = session.get(f"{BASE_URL}?shop_sqno=35", timeout=15)
+    res_main = fetch_html(f"{BASE_URL}?shop_sqno=35")
     res_main.encoding = "utf-8"
     soup_main = BeautifulSoup(res_main.text, "html.parser")
     for a in soup_main.find_all("a", href=True):
@@ -155,18 +151,15 @@ success_count = 0
 
 for shop_name, shop_id in shops.items():
     url = f"{BASE_URL}?shop_sqno={shop_id}"
-    time.sleep(0.5)  # 방화벽 연속 호출 제한(Rate Limit) 회피용 딜레이
+    time.sleep(1)
     try:
-        res = session.get(url, timeout=15)
+        res = fetch_html(url)
         res.encoding = "utf-8"
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # 첫 번째 식당에서 본문 상태 디버깅 출력
         if shop_name == "정보센터식당":
             print(f"[디버그] {shop_name} 응답 코드: {res.status_code}, 본문 길이: {len(res.text)}")
-            print(f"[디버그 9625바이트 제목] {soup.title.string.strip() if soup.title and soup.title.string else '제목없음'}")
-            print(f"[디버그 9625바이트 텍스트 요약] {' '.join(soup.get_text().split())[:300]}")
-            print(f"[디버그 본문 앞 300자] {res.text[:300]}")
+            print(f"[디버그 제목] {soup.title.string.strip() if soup.title and soup.title.string else '제목없음'}")
 
         days = extract_days(soup)
         if not days:
