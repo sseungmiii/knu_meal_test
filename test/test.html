@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>[테스트] 경북대학교 학식 대시보드</title>
+  <style>
+    :root {
+      --primary: #2563eb; /* 테스트 구분용 파란색 테마 */
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      --border: #e2e8f0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+    .app {
+      width: 100%;
+      max-width: 520px;
+    }
+    header {
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .badge {
+      font-size: 0.8rem;
+      background: #dbeafe;
+      color: var(--primary);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+    }
+    .update-time {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+      text-align: right;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    .shop-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shop-btn {
+      flex: 0 0 auto;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .shop-btn.active {
+      background: #0f172a;
+      color: white;
+      border-color: #0f172a;
+    }
+    .day-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .day-btn {
+      flex: 1;
+      padding: 8px 4px;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .day-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .menu-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border);
+    }
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+    .card-title.breakfast { color: #d97706; }
+    .card-title.lunch { color: #2563eb; }
+    .card-title.dinner { color: #4338ca; }
+
+    .time-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: #f1f5f9;
+      color: #334155;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .menu-item {
+      padding: 12px 0;
+      border-bottom: 1px dashed var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .menu-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .menu-item:first-child {
+      padding-top: 0;
+    }
+    .menu-name {
+      color: #1e293b;
+      font-weight: 600;
+      flex: 1;
+      word-break: keep-all;
+    }
+    .menu-price {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 0.9rem;
+      white-space: nowrap;
+      background: #eff6ff;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-top: 2px;
+    }
+
+    .empty-msg {
+      color: var(--text-sub);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 28px 0;
+      background: white;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>경북대 식단표 [테스트]</h1>
+      <span class="badge" id="current-shop-badge">식당</span>
+    </header>
+    <div class="update-time" id="update-time">업데이트 확인 중...</div>
+
+    <div class="shop-tabs" id="shop-tabs"></div>
+    <div class="day-tabs" id="day-tabs"></div>
+
+    <div id="cards-container"></div>
+  </div>
+
+  <script>
+    let globalData = {};
+    let currentShop = "";
+    let currentDay = "";
+
+    const MEAL_INFO = {
+      "조식": { label: "🌅 조식 (아침)", className: "breakfast" },
+      "중식": { label: "☀️ 중식 (점심)", className: "lunch" },
+      "석식": { label: "🌙 석식 (저녁)", className: "dinner" }
+    };
+
+    async function init() {
+      try {
+        // test_menu.json 파일을 캐시 우회로 호출
+        const res = await fetch("./test_menu.json?t=" + new Date().getTime());
+        
+        if (!res.ok) {
+          throw new Error("HTTP 상태 코드 " + res.status);
+        }
+
+        const json = await res.json();
+        globalData = json.data || {};
+        const days = json.days || [];
+        const shops = json.shops || [];
+
+        const updatedAt = json.updated_at || "기록 없음";
+        document.getElementById("update-time").innerText = `마지막 테스트 업데이트: ${updatedAt}`;
+
+        currentShop = shops[0] || "";
+
+        const shopTabsEl = document.getElementById("shop-tabs");
+        shopTabsEl.innerHTML = "";
+        shops.forEach((shopName, idx) => {
+          const btn = document.createElement("button");
+          btn.className = "shop-btn" + (idx === 0 ? " active" : "");
+          btn.innerText = shopName;
+          btn.onclick = () => {
+            document.querySelectorAll(".shop-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentShop = shopName;
+            document.getElementById("current-shop-badge").innerText = shopName;
+            renderMenu();
+          };
+          shopTabsEl.appendChild(btn);
+        });
+
+        const dayTabsEl = document.getElementById("day-tabs");
+        dayTabsEl.innerHTML = "";
+
+        const today = new Date();
+        const m = String(today.getMonth() + 1).padStart(2, "0");
+        const d = String(today.getDate()).padStart(2, "0");
+        const pattern = `${m}/${d}`;
+
+        currentDay = days[0] || "";
+        days.forEach(dayName => {
+          if (dayName && dayName.includes(pattern)) {
+            currentDay = dayName;
+          }
+        });
+
+        days.forEach(dayName => {
+          const btn = document.createElement("button");
+          btn.className = "day-btn" + (dayName === currentDay ? " active" : "");
+          btn.innerText = dayName;
+          btn.onclick = () => {
+            document.querySelectorAll(".day-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentDay = dayName;
+            renderMenu();
+          };
+          dayTabsEl.appendChild(btn);
+        });
+
+        document.getElementById("current-shop-badge").innerText = currentShop;
+        renderMenu();
+      } catch (err) {
+        console.error("데이터 로드 실패 원인:", err);
+        alert("테스트 식단 데이터를 불러올 수 없습니다.\n사유: " + err.message);
+      }
+    }
+
+    function renderMenu() {
+      const container = document.getElementById("cards-container");
+      container.innerHTML = "";
+
+      const shopMenu = globalData[currentShop] || {};
+      const dayMeals = shopMenu[currentDay] || {};
+
+      const mealKeys = Object.keys(dayMeals);
+
+      if (mealKeys.length === 0) {
+        container.innerHTML = '<div class="empty-msg">해당 요일에 등록된 식단이 없습니다.</div>';
+        return;
+      }
+
+      const order = ["조식", "중식", "석식"];
+      mealKeys.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+
+      mealKeys.forEach(mealType => {
+        const mealData = dayMeals[mealType];
+        if (!mealData || !mealData.items || mealData.items.length === 0) return;
+
+        const card = document.createElement("div");
+        card.className = "menu-card";
+
+        const info = MEAL_INFO[mealType] || { label: mealType, className: "" };
+        const timeBadge = mealData.time ? `<span class="time-badge">⏰ ${mealData.time}</span>` : "";
+
+        let itemsHtml = "";
+        mealData.items.forEach(rawItem => {
+          let text = String(rawItem).replace(/[★☆*]/g, "").trim();
+          text = text.replace(/^(특식|정식)\s*/g, "").trim();
+          if (!text || text === "특식" || text === "정식") return;
+
+          const priceMatch = text.match(/([￦₩]\s*[\d,]+|[\d,]+\s*원)/);
+          let price = "";
+          let name = text;
+          if (priceMatch) {
+            price = priceMatch[0].replace(/[￦₩]/g, "₩").replace(/\s+/g, " ").trim();
+            name = text.replace(priceMatch[0], "").trim();
+          }
+
+          name = name.replace(/^(특식|정식)\s*/g, "").replace(/,\s*$/, "").trim();
+
+          if (!name) return;
+
+          itemsHtml += `
+            <div class="menu-item">
+              <span class="menu-name">${name}</span>
+              ${price ? `<span class="menu-price">${price}</span>` : ""}
+            </div>
+          `;
+        });
+
+        if (!itemsHtml) return;
+
+        card.innerHTML = `
+          <div class="card-header">
+            <span class="card-title ${info.className}">${info.label}</span>
+            ${timeBadge}
+          </div>
+          <div>${itemsHtml}</div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
