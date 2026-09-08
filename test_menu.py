@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 BASE_URL = "https://coop.knu.ac.kr/sub03/sub01_01.html"
 SCRAPER_KEY = os.environ.get("SCRAPER_API_KEY", "").strip()
 
+print(f"[디버그 키 확인] 키 존재 여부: {bool(SCRAPER_KEY)}, 키 글자수: {len(SCRAPER_KEY)}")
+
 DEFAULT_SHOPS = {
     "정보센터식당": "35",
     "복지관 교직원식당": "36",
@@ -26,12 +28,12 @@ session.headers.update({
 })
 
 def fetch_html(target_url):
-    # API 키가 환경변수로 있으면 ScraperAPI 프록시를 통해 우회 진입
     if SCRAPER_KEY:
+        print(f"[디버그] ScraperAPI 프록시 우회 요청 -> {target_url}")
         proxy_url = f"https://api.scraperapi.com?api_key={SCRAPER_KEY}&url={quote(target_url)}&country_code=kr"
         return session.get(proxy_url, timeout=30)
     else:
-        # 키가 없으면(로컬 환경 등) 직접 연결
+        print(f"[디버그] API 키 없음 (다이렉트 연결 시도) -> {target_url}")
         return session.get(target_url, timeout=15)
 
 # 1. 식당 목록 파싱
