@@ -161,6 +161,8 @@ for shop_name, shop_id in shops.items():
         print(f"[디버그] {shop_name} 응답 코드: {res.status_code}, 본문 길이: {len(res.text)}")
         if res.status_code != 200 or len(res.text) < 1000:
             print(f"[디버그 본문 앞부분] {res.text[:200]}")
+            print(f"[디버그 9625바이트 제목] {soup.title.string if soup.title else '제목없음'}")
+            print(f"[디버그 9625바이트 텍스트] {soup.get_text()[:300].strip()}")
         res.encoding = "utf-8"
         soup = BeautifulSoup(res.text, "html.parser")
 
