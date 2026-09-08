@@ -1,44 +1,56 @@
+import os
 import json
 import re
 import sys
+import time
+from urllib.parse import quote
 from datetime import datetime, timezone, timedelta
 import requests
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://coop.knu.ac.kr/sub03/sub01_01.html"
+SCRAPER_KEY = os.environ.get("SCRAPER_API_KEY", "").strip()
 
-# 브라우저 위장 헤더
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+DEFAULT_SHOPS = {
+    "정보센터식당": "35",
+    "복지관 교직원식당": "36",
+    "카페테리아 첨성": "37",
+    "GP감꽃식당": "46",
+    "공학관교직원식당(외부업체)": "85",
+    "공학관학생식당(외부업체)": "86"
 }
 
 session = requests.Session()
-session.headers.update(headers)
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+})
 
-# 1. 식당 목록 파싱 (타임아웃 15초로 확대)
-try:
-    res_main = session.get(f"{BASE_URL}?shop_sqno=35", timeout=15)
-    res_main.encoding = "utf-8"
-    soup_main = BeautifulSoup(res_main.text, "html.parser")
-except Exception as e:
-    print(f"[치명적 오류] 메인 페이지 접근 실패: {e}")
-    sys.exit(1)
+def fetch_html(target_url):
+    if SCRAPER_KEY:
+        proxy_url = f"https://api.scraperapi.com?api_key={SCRAPER_KEY}&url={quote(target_url)}&country_code=kr"
+        return session.get(proxy_url, timeout=30)
+    else:
+        return session.get(target_url, timeout=15)
 
 shops = {}
-for a in soup_main.find_all("a", href=True):
-    href = a["href"]
-    if "shop_sqno=" in href:
-        m = re.search(r"shop_sqno=(\d+)", href)
-        if m:
-            name = a.get_text().strip()
-            if name and "ENGLISH" not in name and name not in shops:
-                shops[name] = m.group(1)
+try:
+    res_main = fetch_html(f"{BASE_URL}?shop_sqno=35")
+    res_main.encoding = "utf-8"
+    soup_main = BeautifulSoup(res_main.text, "html.parser")
+    for a in soup_main.find_all("a", href=True):
+        href = a["href"]
+        if "shop_sqno=" in href:
+            m = re.search(r"shop_sqno=(\d+)", href)
+            if m:
+                name = a.get_text().strip()
+                if name and "ENGLISH" not in name and name not in shops:
+                    shops[name] = m.group(1)
+except Exception as e:
+    print(f"[경고] 메인 식당 목록 조회 실패: {e}")
 
 if not shops:
-    print("[치명적 오류] 식당 목록을 파싱하지 못했습니다. 기존 데이터를 유지합니다.")
-    sys.exit(1)
+    print("[알림] 기본 식당 ID 맵으로 대체 진행합니다.")
+    shops = DEFAULT_SHOPS
 
 def extract_days(soup):
     for tbl in soup.find_all("table"):
@@ -68,7 +80,6 @@ def format_time_range(t_start, t_end):
 
 def clean_menu_text(text):
     t = text.replace("★", "").replace("☆", "").replace("*", "")
-    # '특식', '정식' 단독 단어 제거
     t = re.sub(r"\b(특식|정식)\b", "", t)
     t = re.sub(r"(?<!\d),(?!\d)", " ", t)
     t = re.sub(r"\s*&\s*", " ", t)
@@ -114,7 +125,6 @@ def parse_cell(td_el):
 
         if price_pattern.search(line):
             menu_combined = " ".join(curr_tokens).strip()
-            # 결합된 메뉴명 앞뒤의 특식/정식 추가 제거
             menu_combined = re.sub(r"^(특식|정식)\s*", "", menu_combined).strip()
             if menu_combined:
                 items.append(menu_combined)
@@ -138,8 +148,9 @@ success_count = 0
 
 for shop_name, shop_id in shops.items():
     url = f"{BASE_URL}?shop_sqno={shop_id}"
+    time.sleep(1)
     try:
-        res = session.get(url, timeout=15)
+        res = fetch_html(url)
         res.encoding = "utf-8"
         soup = BeautifulSoup(res.text, "html.parser")
 
@@ -202,14 +213,12 @@ for shop_name, shop_id in shops.items():
         print(f"[수집 실패] {shop_name}: {e}")
         all_shops_data[shop_name] = {}
 
-# [안전장치] 수집 데이터 부족 시 덮어쓰기 중단
 if len(all_days) == 0 or success_count < 2:
-    print(f"[경고] 수집된 데이터 부족(성공: {success_count}곳, 요일: {len(all_days)}개). menu.json 덮어쓰기를 취소합니다.")
+    print(f"[크롤링 중단] 수집 성공 식당 부족 ({success_count}곳). 이전 데이터를 유지합니다.")
     sys.exit(1)
 
-# 한국 시간(KST) 타임스탬프 기록
 kst = timezone(timedelta(hours=9))
-now_str = datetime.now(kst).strftime("%Y-%m-%d %H:%M")
+now_str = datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
 
 result = {
     "updated_at": now_str,
@@ -221,4 +230,4 @@ result = {
 with open("menu.json", "w", encoding="utf-8") as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 
-print(f"\n전체 식당 파싱 완료: 총 {success_count}개 식당 수집 성공. (업데이트: {now_str})")
+print(f"\n[작업 완료] 총 {success_count}개 식당 수집 완료. menu.json 갱신 완료 ({now_str})")

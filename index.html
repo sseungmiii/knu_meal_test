@@ -1,352 +1,286 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>경북대학교 학식 대시보드</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>경북대학교 학식 식단표</title>
   <style>
     :root {
       --primary: #c8102e;
-      --bg: #f8fafc;
+      --bg: #f8f9fa;
       --card-bg: #ffffff;
-      --text-main: #0f172a;
-      --text-sub: #64748b;
-      --border: #e2e8f0;
+      --text: #212529;
+      --text-muted: #6c757d;
+      --border: #dee2e6;
     }
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
     }
     body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: var(--bg);
-      color: var(--text-main);
-      display: flex;
-      justify-content: center;
-      padding: 16px;
-    }
-    .app {
-      width: 100%;
-      max-width: 520px;
+      color: var(--text);
+      line-height: 1.5;
+      padding: 1rem;
+      max-width: 1000px;
+      margin: 0 auto;
     }
     header {
-      margin-bottom: 6px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      text-align: center;
+      padding: 1.5rem 0 1rem;
     }
     h1 {
-      font-size: 1.3rem;
-      font-weight: 800;
+      font-size: 1.6rem;
       color: var(--primary);
+      margin-bottom: 0.3rem;
     }
-    .badge {
-      font-size: 0.8rem;
-      background: #fee2e2;
-      color: var(--primary);
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-weight: 700;
-    }
-    .update-time {
-      font-size: 0.75rem;
-      color: var(--text-sub);
-      text-align: right;
-      margin-bottom: 12px;
-      font-weight: 500;
-    }
-    .shop-tabs {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 12px;
-      overflow-x: auto;
-      padding-bottom: 4px;
-      -webkit-overflow-scrolling: touch;
-    }
-    .shop-btn {
-      flex: 0 0 auto;
-      padding: 8px 14px;
-      border: 1px solid var(--border);
-      background: white;
-      border-radius: 20px;
-      font-weight: 700;
+    .updated-at {
       font-size: 0.85rem;
-      color: var(--text-sub);
-      cursor: pointer;
-      transition: all 0.2s;
-      white-space: nowrap;
+      color: var(--text-muted);
     }
-    .shop-btn.active {
-      background: #0f172a;
-      color: white;
-      border-color: #0f172a;
-    }
-    .day-tabs {
+    .controls {
       display: flex;
-      gap: 6px;
-      margin-bottom: 16px;
+      flex-direction: column;
+      gap: 0.8rem;
+      margin: 1.2rem 0;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      padding: 0.5rem 0;
+      z-index: 10;
+    }
+    .pill-group {
+      display: flex;
+      gap: 0.5rem;
       overflow-x: auto;
-      padding-bottom: 4px;
+      padding-bottom: 0.2rem;
+      scrollbar-width: none;
     }
-    .day-btn {
-      flex: 1;
-      padding: 8px 4px;
+    .pill-group::-webkit-scrollbar {
+      display: none;
+    }
+    .pill-btn {
+      background: var(--card-bg);
       border: 1px solid var(--border);
-      background: white;
-      border-radius: 10px;
-      font-weight: 700;
-      font-size: 0.82rem;
+      border-radius: 20px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text);
       cursor: pointer;
-      text-align: center;
-      transition: all 0.2s;
       white-space: nowrap;
+      transition: all 0.2s;
     }
-    .day-btn.active {
+    .pill-btn.active {
       background: var(--primary);
-      color: white;
+      color: #fff;
       border-color: var(--primary);
     }
-    .menu-card {
-      background: var(--card-bg);
-      border-radius: 16px;
-      padding: 18px;
-      margin-bottom: 16px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-      border: 1px solid var(--border);
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
     }
-    .card-header {
+    .shop-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    }
+    .shop-name {
+      font-size: 1.15rem;
+      font-weight: 700;
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 0.4rem;
+      margin-bottom: 0.8rem;
+    }
+    .meal-block {
+      margin-bottom: 0.8rem;
+    }
+    .meal-block:last-child {
+      margin-bottom: 0;
+    }
+    .meal-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 2px solid var(--border);
+      margin-bottom: 0.3rem;
     }
-    .card-title {
-      font-size: 1.15rem;
-      font-weight: 800;
-    }
-    .card-title.breakfast { color: #d97706; }
-    .card-title.lunch { color: #dc2626; }
-    .card-title.dinner { color: #4338ca; }
-
-    .time-badge {
-      font-size: 0.75rem;
-      font-weight: 700;
-      background: #f1f5f9;
-      color: #334155;
-      padding: 4px 8px;
-      border-radius: 6px;
-    }
-
-    .menu-item {
-      padding: 12px 0;
-      border-bottom: 1px dashed var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      font-size: 0.95rem;
-      line-height: 1.5;
-    }
-    .menu-item:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
-    .menu-item:first-child {
-      padding-top: 0;
-    }
-    .menu-name {
-      color: #1e293b;
+    .meal-type {
       font-weight: 600;
-      flex: 1;
-      word-break: keep-all;
-    }
-    .menu-price {
-      font-weight: 700;
+      font-size: 0.95rem;
       color: var(--primary);
-      font-size: 0.9rem;
-      white-space: nowrap;
-      background: #fff1f2;
-      padding: 2px 8px;
-      border-radius: 6px;
-      margin-top: 2px;
     }
-
-    .empty-msg {
-      color: var(--text-sub);
+    .meal-time {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .meal-items {
+      list-style: none;
       font-size: 0.9rem;
+      padding-left: 0.2rem;
+    }
+    .meal-items li {
+      padding: 0.15rem 0;
+      border-bottom: 1px dashed #f1f3f5;
+    }
+    .meal-items li:last-child {
+      border-bottom: none;
+    }
+    .no-data {
       text-align: center;
-      padding: 28px 0;
-      background: white;
-      border-radius: 16px;
-      border: 1px solid var(--border);
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    .loading {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--text-muted);
     }
   </style>
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1>경북대 식단표</h1>
-      <span class="badge" id="current-shop-badge">식당</span>
-    </header>
-    <div class="update-time" id="update-time">업데이트 확인 중...</div>
+  <header>
+    <h1>경북대학교 학식 식단표</h1>
+    <div id="updatedAt" class="updated-at">식단 불러오는 중...</div>
+  </header>
 
-    <div class="shop-tabs" id="shop-tabs"></div>
-    <div class="day-tabs" id="day-tabs"></div>
-
-    <div id="cards-container"></div>
+  <div class="controls">
+    <div id="daySelector" class="pill-group"></div>
+    <div id="mealSelector" class="pill-group">
+      <button class="pill-btn active" data-meal="ALL">전체 보기</button>
+      <button class="pill-btn" data-meal="조식">조식</button>
+      <button class="pill-btn" data-meal="중식">중식</button>
+      <button class="pill-btn" data-meal="석식">석식</button>
+    </div>
   </div>
 
-  <script>
-    let globalData = {};
-    let currentShop = "";
-    let currentDay = "";
+  <main id="menuContainer" class="menu-grid">
+    <div class="loading">식단 데이터를 가져오고 있습니다...</div>
+  </main>
 
-    const MEAL_INFO = {
-      "조식": { label: "🌅 조식 (아침)", className: "breakfast" },
-      "중식": { label: "☀️ 중식 (점심)", className: "lunch" },
-      "석식": { label: "🌙 석식 (저녁)", className: "dinner" }
-    };
+  <script>
+    let rawData = null;
+    let selectedDay = "";
+    let selectedMeal = "ALL";
 
     async function init() {
       try {
-        const res = await fetch("./menu.json?t=" + new Date().getTime());
+        const res = await fetch(`./menu.json?t=${new Date().getTime()}`);
+        if (!res.ok) throw new Error("JSON 로드 실패");
+        rawData = await res.json();
         
-        if (!res.ok) {
-          throw new Error("HTTP 상태 코드 " + res.status);
-        }
-
-        const json = await res.json();
-        globalData = json.data || {};
-        const days = json.days || [];
-        const shops = json.shops || [];
-
-        const updatedAt = json.updated_at || "기록 없음";
-        document.getElementById("update-time").innerText = `마지막 업데이트: ${updatedAt}`;
-
-        currentShop = shops[0] || "";
-
-        const shopTabsEl = document.getElementById("shop-tabs");
-        shopTabsEl.innerHTML = "";
-        shops.forEach((shopName, idx) => {
-          const btn = document.createElement("button");
-          btn.className = "shop-btn" + (idx === 0 ? " active" : "");
-          btn.innerText = shopName;
-          btn.onclick = () => {
-            document.querySelectorAll(".shop-btn").forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            currentShop = shopName;
-            document.getElementById("current-shop-badge").innerText = shopName;
-            renderMenu();
-          };
-          shopTabsEl.appendChild(btn);
-        });
-
-        const dayTabsEl = document.getElementById("day-tabs");
-        dayTabsEl.innerHTML = "";
-
-        const today = new Date();
-        const m = String(today.getMonth() + 1).padStart(2, "0");
-        const d = String(today.getDate()).padStart(2, "0");
-        const pattern = `${m}/${d}`;
-
-        currentDay = days[0] || "";
-        days.forEach(dayName => {
-          if (dayName && dayName.includes(pattern)) {
-            currentDay = dayName;
-          }
-        });
-
-        days.forEach(dayName => {
-          const btn = document.createElement("button");
-          btn.className = "day-btn" + (dayName === currentDay ? " active" : "");
-          btn.innerText = dayName;
-          btn.onclick = () => {
-            document.querySelectorAll(".day-btn").forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            currentDay = dayName;
-            renderMenu();
-          };
-          dayTabsEl.appendChild(btn);
-        });
-
-        document.getElementById("current-shop-badge").innerText = currentShop;
-        renderMenu();
+        document.getElementById("updatedAt").textContent = `최근 갱신: ${rawData.updated_at || "정보 없음"}`;
+        
+        setupDays(rawData.days);
+        setupMeals();
+        render();
       } catch (err) {
-        console.error("데이터 로드 실패 원인:", err);
-        alert("식단 데이터를 불러올 수 없습니다.\n사유: " + err.message);
+        document.getElementById("menuContainer").innerHTML = 
+          `<div class="no-data">식단 데이터를 불러오지 못했습니다.<br/>(${err.message})</div>`;
       }
     }
 
-    function renderMenu() {
-      const container = document.getElementById("cards-container");
+    function setupDays(days) {
+      const container = document.getElementById("daySelector");
       container.innerHTML = "";
 
-      const shopMenu = globalData[currentShop] || {};
-      const dayMeals = shopMenu[currentDay] || {};
+      if (!days || days.length === 0) return;
 
-      const mealKeys = Object.keys(dayMeals);
+      const todayIdx = new Date().getDay(); 
+      const dayMap = ["일", "월", "화", "수", "목", "금", "토"];
+      const currentDayChar = dayMap[todayIdx];
 
-      if (mealKeys.length === 0) {
-        container.innerHTML = '<div class="empty-msg">해당 요일에 등록된 식단이 없습니다.</div>';
+      let targetIdx = days.findIndex(d => d.includes(currentDayChar));
+      if (targetIdx === -1) targetIdx = 0;
+
+      selectedDay = days[targetIdx];
+
+      days.forEach((day, idx) => {
+        const btn = document.createElement("button");
+        btn.className = `pill-btn ${idx === targetIdx ? "active" : ""}`;
+        btn.textContent = day;
+        btn.onclick = () => {
+          document.querySelectorAll("#daySelector .pill-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedDay = day;
+          render();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function setupMeals() {
+      document.querySelectorAll("#mealSelector .pill-btn").forEach(btn => {
+        btn.onclick = () => {
+          document.querySelectorAll("#mealSelector .pill-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedMeal = btn.dataset.meal;
+          render();
+        };
+      });
+    }
+
+    function render() {
+      const container = document.getElementById("menuContainer");
+      container.innerHTML = "";
+
+      if (!rawData || !rawData.data) {
+        container.innerHTML = `<div class="no-data">등록된 식단 정보가 없습니다.</div>`;
         return;
       }
 
-      const order = ["조식", "중식", "석식"];
-      mealKeys.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      let renderedAny = false;
 
-      mealKeys.forEach(mealType => {
-        const mealData = dayMeals[mealType];
-        if (!mealData || !mealData.items || mealData.items.length === 0) return;
+      rawData.shops.forEach(shop => {
+        const shopDaily = rawData.data[shop] ? rawData.data[shop][selectedDay] : null;
+        if (!shopDaily) return;
 
-        const card = document.createElement("div");
-        card.className = "menu-card";
+        let mealsToRender = ["조식", "중식", "석식"];
+        if (selectedMeal !== "ALL") {
+          mealsToRender = [selectedMeal];
+        }
 
-        const info = MEAL_INFO[mealType] || { label: mealType, className: "" };
-        const timeBadge = mealData.time ? `<span class="time-badge">⏰ ${mealData.time}</span>` : "";
+        let mealBlocksHtml = "";
+        let hasAnyItem = false;
 
-        let itemsHtml = "";
-        mealData.items.forEach(rawItem => {
-          let text = String(rawItem).replace(/[★☆*]/g, "").trim();
-          
-          // '특식', '정식' 접두어 및 단독 표기 제거
-          text = text.replace(/^(특식|정식)\s*/g, "").trim();
-          if (!text || text === "특식" || text === "정식") return;
-
-          const priceMatch = text.match(/([￦₩]\s*[\d,]+|[\d,]+\s*원)/);
-          let price = "";
-          let name = text;
-          if (priceMatch) {
-            price = priceMatch[0].replace(/[￦₩]/g, "₩").replace(/\s+/g, " ").trim();
-            name = text.replace(priceMatch[0], "").trim();
+        mealsToRender.forEach(mType => {
+          const mealInfo = shopDaily[mType];
+          if (mealInfo && mealInfo.items && mealInfo.items.length > 0) {
+            hasAnyItem = true;
+            mealBlocksHtml += `
+              <div class="meal-block">
+                <div class="meal-header">
+                  <span class="meal-type">${mType}</span>
+                  ${mealInfo.time ? `<span class="meal-time">${mealInfo.time}</span>` : ""}
+                </div>
+                <ul class="meal-items">
+                  ${mealInfo.items.map(item => `<li>${item}</li>`).join("")}
+                </ul>
+              </div>
+            `;
           }
-
-          // 메뉴명 앞뒤 공백 및 잔여 특식/정식 정리
-          name = name.replace(/^(특식|정식)\s*/g, "").replace(/,\s*$/, "").trim();
-
-          if (!name) return;
-
-          itemsHtml += `
-            <div class="menu-item">
-              <span class="menu-name">${name}</span>
-              ${price ? `<span class="menu-price">${price}</span>` : ""}
-            </div>
-          `;
         });
 
-        if (!itemsHtml) return;
-
-        card.innerHTML = `
-          <div class="card-header">
-            <span class="card-title ${info.className}">${info.label}</span>
-            ${timeBadge}
-          </div>
-          <div>${itemsHtml}</div>
-        `;
-        container.appendChild(card);
+        if (hasAnyItem) {
+          renderedAny = true;
+          const card = document.createElement("div");
+          card.className = "shop-card";
+          card.innerHTML = `
+            <div class="shop-name">${shop}</div>
+            ${mealBlocksHtml}
+          `;
+          container.appendChild(card);
+        }
       });
+
+      if (!renderedAny) {
+        container.innerHTML = `<div class="no-data">선택한 조건의 식단 정보가 없습니다.</div>`;
+      }
     }
 
     init();
