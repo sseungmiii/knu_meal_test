@@ -1,14 +1,12 @@
 name: Test Meal Crawler
 
 on:
-  workflow_dispatch: # Actions 탭에서 수동으로 'Run workflow' 버튼을 눌러 즉시 테스트 가능
+  workflow_dispatch:
   schedule:
-    # 한국 시간 기준 매일 오전 06시 23분에 자동 실행 (UTC 21:23)
-    # 분 단위를 23분으로 설정하여 트래픽 정체 회피
     - cron: '23 21 * * *'
 
 permissions:
-  contents: write # 봇이 깃허브에 test_menu.json을 커밋하고 푸시할 권한
+  contents: write
 
 jobs:
   run-test-crawler:
@@ -29,6 +27,8 @@ jobs:
           pip install requests beautifulsoup4
 
       - name: 테스트 크롤러 실행
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: |
           python test_menu.py
 
