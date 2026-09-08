@@ -31,7 +31,7 @@
       max-width: 520px;
     }
     header {
-      margin-bottom: 14px;
+      margin-bottom: 6px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -48,6 +48,13 @@
       padding: 4px 10px;
       border-radius: 20px;
       font-weight: 700;
+    }
+    .update-time {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+      text-align: right;
+      margin-bottom: 12px;
+      font-weight: 500;
     }
     .shop-tabs {
       display: flex;
@@ -184,6 +191,7 @@
       <h1>경북대 식단표</h1>
       <span class="badge" id="current-shop-badge">식당</span>
     </header>
+    <div class="update-time" id="update-time">업데이트 확인 중...</div>
 
     <div class="shop-tabs" id="shop-tabs"></div>
     <div class="day-tabs" id="day-tabs"></div>
@@ -214,6 +222,9 @@
         globalData = json.data || {};
         const days = json.days || [];
         const shops = json.shops || [];
+
+        const updatedAt = json.updated_at || "기록 없음";
+        document.getElementById("update-time").innerText = `마지막 업데이트: ${updatedAt}`;
 
         currentShop = shops[0] || "";
 
@@ -299,7 +310,10 @@
         let itemsHtml = "";
         mealData.items.forEach(rawItem => {
           let text = String(rawItem).replace(/[★☆*]/g, "").trim();
-          if (!text || text === "특식") return;
+          
+          // '특식', '정식' 접두어 및 단독 표기 제거
+          text = text.replace(/^(특식|정식)\s*/g, "").trim();
+          if (!text || text === "특식" || text === "정식") return;
 
           const priceMatch = text.match(/([￦₩]\s*[\d,]+|[\d,]+\s*원)/);
           let price = "";
@@ -309,7 +323,8 @@
             name = text.replace(priceMatch[0], "").trim();
           }
 
-          name = name.replace(/,\s*$/, "").trim();
+          // 메뉴명 앞뒤 공백 및 잔여 특식/정식 정리
+          name = name.replace(/^(특식|정식)\s*/g, "").replace(/,\s*$/, "").trim();
 
           if (!name) return;
 
