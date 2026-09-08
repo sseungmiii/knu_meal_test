@@ -1,189 +1,355 @@
-import json
-import re
-import requests
-from bs4 import BeautifulSoup
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>경북대학교 학식 대시보드</title>
+  <style>
+    :root {
+      --primary: #c8102e;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-sub: #64748b;
+      --border: #e2e8f0;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+    .app {
+      width: 100%;
+      max-width: 520px;
+    }
+    header {
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .badge {
+      font-size: 0.8rem;
+      background: #fee2e2;
+      color: var(--primary);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 700;
+    }
+    .update-time {
+      font-size: 0.75rem;
+      color: var(--text-sub);
+      text-align: right;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .shop-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shop-btn {
+      flex: 0 0 auto;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .shop-btn.active {
+      background: #0f172a;
+      color: white;
+      border-color: #0f172a;
+    }
+    .day-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .day-btn {
+      flex: 1;
+      padding: 8px 4px;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .day-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .menu-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+      border: 1px solid var(--border);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--border);
+    }
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+    .card-title.breakfast { color: #d97706; }
+    .card-title.lunch { color: #dc2626; }
+    .card-title.dinner { color: #4338ca; }
 
-BASE_URL = "https://coop.knu.ac.kr/sub03/sub01_01.html"
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-}
+    .time-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: #f1f5f9;
+      color: #334155;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
 
-res_main = requests.get(f"{BASE_URL}?shop_sqno=35", headers=headers, timeout=5)
-res_main.encoding = "utf-8"
-soup_main = BeautifulSoup(res_main.text, "html.parser")
+    .menu-item {
+      padding: 12px 0;
+      border-bottom: 1px dashed var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .menu-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .menu-item:first-child {
+      padding-top: 0;
+    }
+    .menu-name {
+      color: #1e293b;
+      font-weight: 600;
+      flex: 1;
+      word-break: keep-all;
+    }
+    .menu-price {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 0.9rem;
+      white-space: nowrap;
+      background: #fff1f2;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-top: 2px;
+    }
 
-shops = {}
-for a in soup_main.find_all("a", href=True):
-    href = a["href"]
-    if "shop_sqno=" in href:
-        m = re.search(r"shop_sqno=(\d+)", href)
-        if m:
-            name = a.get_text().strip()
-            if name and "ENGLISH" not in name and name not in shops:
-                shops[name] = m.group(1)
+    .empty-msg {
+      color: var(--text-sub);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 28px 0;
+      background: white;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>경북대 식단표</h1>
+      <span class="badge" id="current-shop-badge">식당</span>
+    </header>
+    <div class="update-time" id="update-time">업데이트 확인 중...</div>
 
-def extract_days(soup):
-    for tbl in soup.find_all("table"):
-        cells = tbl.find_all(["th", "td"])
-        found = []
-        for c in cells:
-            txt = c.get_text().strip().replace("\xa0", " ")
-            if any(txt.startswith(d) for d in ["월", "화", "수", "목", "금", "토"]) and "(" in txt:
-                found.append(txt)
-        if len(found) >= 5:
-            return found
-    return []
+    <div class="shop-tabs" id="shop-tabs"></div>
+    <div class="day-tabs" id="day-tabs"></div>
 
-raw_time_regex = re.compile(r"\(?\b(\d{1,2}:?\d{2})\s*~\s*(\d{1,2}:?\d{2})분?\)?")
-# 가격 정규식: ₩ 뒤 공백 및 쉼표 포함 숫자 전체 매칭
-price_pattern = re.compile(r"([￦₩]\s*[\d,]+|[\d,]+\s*원)")
+    <div id="cards-container"></div>
+  </div>
 
-def normalize_time_str(time_str):
-    clean = time_str.replace("분", "").strip()
-    if ":" not in clean and len(clean) in [3, 4]:
-        return f"{clean[:-2]}:{clean[-2:]}"
-    return clean
+  <script>
+    let globalData = {};
+    let currentShop = "";
+    let currentDay = "";
 
-def format_time_range(t_start, t_end):
-    start = normalize_time_str(t_start)
-    end = normalize_time_str(t_end)
-    return f"{start}~{end}"
+    const MEAL_INFO = {
+      "조식": { label: "🌅 조식 (아침)", className: "breakfast" },
+      "중식": { label: "☀️ 중식 (점심)", className: "lunch" },
+      "석식": { label: "🌙 석식 (저녁)", className: "dinner" }
+    };
 
-def clean_menu_text(text):
-    # 별표, 불필요 특수문자 제거
-    t = text.replace("★", "").replace("☆", "").replace("*", "")
-    # 숫자 사이의 쉼표는 보존하고, 일반 쉼표만 공백 처리
-    t = re.sub(r"(?<!\d),(?!\d)", " ", t)
-    t = re.sub(r"\s*&\s*", " ", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
+    async function init() {
+      try {
+        const res = await fetch("./menu.json?t=" + new Date().getTime());
+        
+        if (!res.ok) {
+          throw new Error("HTTP 상태 코드 " + res.status);
+        }
 
-def parse_cell(td_el):
-    raw_lines = [l.strip() for l in td_el.get_text(separator="\n").split("\n") if l.strip()]
-    raw_lines = [l for l in raw_lines if l not in ["분류", "코너", "조식", "중식", "석식"]]
-    if not raw_lines:
-        return []
+        const json = await res.json();
+        globalData = json.data || {};
+        const days = json.days || [];
+        const shops = json.shops || [];
 
-    full_text = " ".join(raw_lines)
+        const updatedAt = json.updated_at || "기록 없음";
+        document.getElementById("update-time").innerText = `마지막 업데이트: ${updatedAt}`;
 
-    cell_time = ""
-    t_match = raw_time_regex.search(full_text)
-    if t_match:
-        cell_time = format_time_range(t_match.group(1), t_match.group(2))
+        currentShop = shops[0] || "";
 
-    meal = "중식"
-    if "천원의 아침밥" in full_text or "천원의아침밥" in full_text or any(h in cell_time for h in ["08:", "09:", "10:00~11"]):
-        meal = "조식"
-        if not cell_time:
-            cell_time = "09:00~11:00"
-    elif any(h in cell_time for h in ["17:", "18:", "19:"]) or "1식4찬" in full_text:
-        meal = "석식"
-        if not cell_time:
-            cell_time = "17:00~19:00"
+        const shopTabsEl = document.getElementById("shop-tabs");
+        shopTabsEl.innerHTML = "";
+        shops.forEach((shopName, idx) => {
+          const btn = document.createElement("button");
+          btn.className = "shop-btn" + (idx === 0 ? " active" : "");
+          btn.innerText = shopName;
+          btn.onclick = () => {
+            document.querySelectorAll(".shop-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentShop = shopName;
+            document.getElementById("current-shop-badge").innerText = shopName;
+            renderMenu();
+          };
+          shopTabsEl.appendChild(btn);
+        });
 
-    items = []
-    curr_tokens = []
+        const dayTabsEl = document.getElementById("day-tabs");
+        dayTabsEl.innerHTML = "";
 
-    for line in raw_lines:
-        if raw_time_regex.fullmatch(line) or line.startswith("운영시간"):
-            continue
+        const today = new Date();
+        const m = String(today.getMonth() + 1).padStart(2, "0");
+        const d = String(today.getDate()).padStart(2, "0");
+        const pattern = `${m}/${d}`;
 
-        cleaned = raw_time_regex.sub("", line).strip()
-        cleaned = clean_menu_text(cleaned)
-        if not cleaned:
-            continue
+        currentDay = days[0] || "";
+        days.forEach(dayName => {
+          if (dayName && dayName.includes(pattern)) {
+            currentDay = dayName;
+          }
+        });
 
-        curr_tokens.append(cleaned)
+        days.forEach(dayName => {
+          const btn = document.createElement("button");
+          btn.className = "day-btn" + (dayName === currentDay ? " active" : "");
+          btn.innerText = dayName;
+          btn.onclick = () => {
+            document.querySelectorAll(".day-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentDay = dayName;
+            renderMenu();
+          };
+          dayTabsEl.appendChild(btn);
+        });
 
-        if price_pattern.search(line):
-            menu_combined = " ".join(curr_tokens)
-            items.append(menu_combined)
-            curr_tokens = []
+        document.getElementById("current-shop-badge").innerText = currentShop;
+        renderMenu();
+      } catch (err) {
+        console.error("데이터 로드 실패 원인:", err);
+        alert("식단 데이터를 불러올 수 없습니다.\n사유: " + err.message);
+      }
+    }
 
-    if curr_tokens:
-        items.append(" ".join(curr_tokens))
+    function renderMenu() {
+      const container = document.getElementById("cards-container");
+      container.innerHTML = "";
 
-    return [{
-        "meal": meal,
-        "time": cell_time,
-        "items": items
-    }]
+      const shopMenu = globalData[currentShop] || {};
+      const dayMeals = shopMenu[currentDay] || {};
 
-all_shops_data = {}
-all_days = []
+      const mealKeys = Object.keys(dayMeals);
 
-for shop_name, shop_id in shops.items():
-    url = f"{BASE_URL}?shop_sqno={shop_id}"
-    try:
-        res = requests.get(url, headers=headers, timeout=5)
-        res.encoding = "utf-8"
-        soup = BeautifulSoup(res.text, "html.parser")
+      if (mealKeys.length === 0) {
+        container.innerHTML = '<div class="empty-msg">해당 요일에 등록된 식단이 없습니다.</div>';
+        return;
+      }
 
-        days = extract_days(soup)
-        if not days:
-            all_shops_data[shop_name] = {}
-            continue
+      const order = ["조식", "중식", "석식"];
+      mealKeys.sort((a, b) => order.indexOf(a) - order.indexOf(b));
 
-        if not all_days:
-            all_days = days
+      mealKeys.forEach(mealType => {
+        const mealData = dayMeals[mealType];
+        if (!mealData || !mealData.items || mealData.items.length === 0) return;
 
-        weekly = {day: {"조식": {"time": "", "items": []}, 
-                        "중식": {"time": "", "items": []}, 
-                        "석식": {"time": "", "items": []}} for day in days}
+        const card = document.createElement("div");
+        card.className = "menu-card";
 
-        row_context_meal = None
+        const info = MEAL_INFO[mealType] || { label: mealType, className: "" };
+        const timeBadge = mealData.time ? `<span class="time-badge">⏰ ${mealData.time}</span>` : "";
 
-        for tbl in soup.find_all("table"):
-            for tr in tbl.find_all("tr"):
-                header_txt = tr.get_text().replace(" ", "")
-                if "조식" in header_txt:
-                    row_context_meal = "조식"
-                elif "석식" in header_txt:
-                    row_context_meal = "석식"
-                elif "중식" in header_txt:
-                    row_context_meal = "중식"
+        let itemsHtml = "";
+        mealData.items.forEach(rawItem => {
+          let text = String(rawItem).replace(/[★☆*]/g, "").trim();
+          
+          // '특식', '정식' 접두어 및 단독 표기 제거
+          text = text.replace(/^(특식|정식)\s*/g, "").trim();
+          if (!text || text === "특식" || text === "정식") return;
 
-                tds = tr.find_all("td")
-                content_tds = [td for td in tds if td.get_text().strip() not in ["조식", "중식", "석식", "분류", "코너"]]
+          const priceMatch = text.match(/([￦₩]\s*[\d,]+|[\d,]+\s*원)/);
+          let price = "";
+          let name = text;
+          if (priceMatch) {
+            price = priceMatch[0].replace(/[￦₩]/g, "₩").replace(/\s+/g, " ").trim();
+            name = text.replace(priceMatch[0], "").trim();
+          }
 
-                if len(content_tds) == len(days):
-                    for idx, td in enumerate(content_tds):
-                        day_key = days[idx]
-                        results = parse_cell(td)
+          // 메뉴명 앞뒤 공백 및 잔여 특식/정식 정리
+          name = name.replace(/^(특식|정식)\s*/g, "").replace(/,\s*$/, "").trim();
 
-                        for res_item in results:
-                            target_meal = res_item["meal"]
-                            if target_meal == "중식" and row_context_meal and not res_item["time"]:
-                                target_meal = row_context_meal
+          if (!name) return;
 
-                            if res_item["time"] and not weekly[day_key][target_meal]["time"]:
-                                weekly[day_key][target_meal]["time"] = res_item["time"]
+          itemsHtml += `
+            <div class="menu-item">
+              <span class="menu-name">${name}</span>
+              ${price ? `<span class="menu-price">${price}</span>` : ""}
+            </div>
+          `;
+        });
 
-                            for itm in res_item["items"]:
-                                if itm not in weekly[day_key][target_meal]["items"]:
-                                    weekly[day_key][target_meal]["items"].append(itm)
+        if (!itemsHtml) return;
 
-        cleaned_weekly = {}
-        for d in days:
-            cleaned_weekly[d] = {}
-            for m in ["조식", "중식", "석식"]:
-                if weekly[d][m]["items"]:
-                    cleaned_weekly[d][m] = weekly[d][m]
+        card.innerHTML = `
+          <div class="card-header">
+            <span class="card-title ${info.className}">${info.label}</span>
+            ${timeBadge}
+          </div>
+          <div>${itemsHtml}</div>
+        `;
+        container.appendChild(card);
+      });
+    }
 
-        all_shops_data[shop_name] = cleaned_weekly
-        print(f"[수집 성공] {shop_name}")
-
-    except Exception as e:
-        print(f"[수집 실패] {shop_name}: {e}")
-        all_shops_data[shop_name] = {}
-
-result = {
-    "days": all_days,
-    "shops": list(shops.keys()),
-    "data": all_shops_data
-}
-
-with open("menu.json", "w", encoding="utf-8") as f:
-    json.dump(result, f, ensure_ascii=False, indent=2)
-
-print("\n전체 식당 파싱 완료: menu.json 최신화 성공")
+    init();
+  </script>
+</body>
+</html>
