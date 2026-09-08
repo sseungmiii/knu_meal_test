@@ -158,6 +158,9 @@ for shop_name, shop_id in shops.items():
     time.sleep(0.5)  # 방화벽 연속 호출 제한(Rate Limit) 회피용 딜레이
     try:
         res = session.get(url, timeout=15)
+        print(f"[디버그] {shop_name} 응답 코드: {res.status_code}, 본문 길이: {len(res.text)}")
+        if res.status_code != 200 or len(res.text) < 1000:
+            print(f"[디버그 본문 앞부분] {res.text[:200]}")
         res.encoding = "utf-8"
         soup = BeautifulSoup(res.text, "html.parser")
 
