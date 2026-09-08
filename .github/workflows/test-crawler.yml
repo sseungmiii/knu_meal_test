@@ -1,0 +1,45 @@
+name: Test Meal Crawler
+
+on:
+  workflow_dispatch: # Actions 탭에서 수동으로 'Run workflow' 버튼을 눌러 즉시 테스트 가능
+  schedule:
+    # 한국 시간 기준 매일 오전 06시 23분에 자동 실행 (UTC 21:23)
+    # 분 단위를 23분으로 설정하여 트래픽 정체 회피
+    - cron: '23 21 * * *'
+
+permissions:
+  contents: write # 봇이 깃허브에 test_menu.json을 커밋하고 푸시할 권한
+
+jobs:
+  run-test-crawler:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 3.11 환경 세팅
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 크롤링 필수 패키지 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: 테스트 크롤러 실행
+        run: |
+          python test_menu.py
+
+      - name: 변경된 test_menu.json 커밋 및 푸시
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add test_menu.json
+          if git diff --staged --quiet; then
+            echo "변경된 식단 데이터가 없습니다. 커밋을 건너뜁니다."
+          else
+            git commit -m "Auto Update: test_menu.json 최신화"
+            git push
+          fi
