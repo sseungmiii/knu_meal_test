@@ -1,42 +1,63 @@
 import json
 import re
 import sys
+import time
 from datetime import datetime, timezone, timedelta
 import requests
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://coop.knu.ac.kr/sub03/sub01_01.html"
 
+# 고정 식당 ID 맵 (학교 방화벽으로 메인 메뉴 목록이 안 긁힐 때 대비)
+DEFAULT_SHOPS = {
+    "정보센터식당": "35",
+    "복지관 교직원식당": "36",
+    "카페테리아 첨성": "37",
+    "GP감꽃식당": "46",
+    "공학관교직원식당(외부업체)": "85",
+    "공학관학생식당(외부업체)": "86"
+}
+
+# 실제 Chrome 브라우저 완벽 위장 헤더
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://coop.knu.ac.kr/",
+    "Connection": "keep-alive",
+    "Sec-Ch-Ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1"
 }
 
 session = requests.Session()
 session.headers.update(headers)
 
+# 1. 식당 목록 파싱 (실패 시 DEFAULT_SHOPS 사용)
+shops = {}
 try:
     res_main = session.get(f"{BASE_URL}?shop_sqno=35", timeout=15)
     res_main.encoding = "utf-8"
     soup_main = BeautifulSoup(res_main.text, "html.parser")
+    for a in soup_main.find_all("a", href=True):
+        href = a["href"]
+        if "shop_sqno=" in href:
+            m = re.search(r"shop_sqno=(\d+)", href)
+            if m:
+                name = a.get_text().strip()
+                if name and "ENGLISH" not in name and name not in shops:
+                    shops[name] = m.group(1)
 except Exception as e:
-    print(f"[테스트 치명적 오류] 메인 페이지 접근 실패: {e}")
-    sys.exit(1)
-
-shops = {}
-for a in soup_main.find_all("a", href=True):
-    href = a["href"]
-    if "shop_sqno=" in href:
-        m = re.search(r"shop_sqno=(\d+)", href)
-        if m:
-            name = a.get_text().strip()
-            if name and "ENGLISH" not in name and name not in shops:
-                shops[name] = m.group(1)
+    print(f"[경고] 메인 식당 목록 조회 실패: {e}")
 
 if not shops:
-    print("[테스트 오류] 식당 목록 파싱 실패. 종료합니다.")
-    sys.exit(1)
+    print("[알림] 기본 식당 ID 맵으로 대체 진행합니다.")
+    shops = DEFAULT_SHOPS
 
 def extract_days(soup):
     for tbl in soup.find_all("table"):
@@ -134,6 +155,7 @@ success_count = 0
 
 for shop_name, shop_id in shops.items():
     url = f"{BASE_URL}?shop_sqno={shop_id}"
+    time.sleep(0.5)  # 방화벽 연속 호출 제한(Rate Limit) 회피용 딜레이
     try:
         res = session.get(url, timeout=15)
         res.encoding = "utf-8"
@@ -199,7 +221,7 @@ for shop_name, shop_id in shops.items():
         all_shops_data[shop_name] = {}
 
 if len(all_days) == 0 or success_count < 2:
-    print(f"[테스트 실패] 데이터 부족(성공: {success_count}곳). test_menu.json 저장을 건너뜁니다.")
+    print(f"[테스트 실패] 데이터 부족(성공: {success_count}곳). test_menu.json 저장을 중단합니다.")
     sys.exit(1)
 
 kst = timezone(timedelta(hours=9))
@@ -212,7 +234,6 @@ result = {
     "data": all_shops_data
 }
 
-# 테스트 전용 파일로 출력
 with open("test_menu.json", "w", encoding="utf-8") as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 
