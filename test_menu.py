@@ -158,13 +158,15 @@ for shop_name, shop_id in shops.items():
     time.sleep(0.5)  # 방화벽 연속 호출 제한(Rate Limit) 회피용 딜레이
     try:
         res = session.get(url, timeout=15)
-        print(f"[디버그] {shop_name} 응답 코드: {res.status_code}, 본문 길이: {len(res.text)}")
-        if res.status_code != 200 or len(res.text) < 1000:
-            print(f"[디버그 본문 앞부분] {res.text[:200]}")
-            print(f"[디버그 9625바이트 제목] {soup.title.string if soup.title else '제목없음'}")
-            print(f"[디버그 9625바이트 텍스트] {soup.get_text()[:300].strip()}")
         res.encoding = "utf-8"
         soup = BeautifulSoup(res.text, "html.parser")
+
+        # 첫 번째 식당에서 본문 상태 디버깅 출력
+        if shop_name == "정보센터식당":
+            print(f"[디버그] {shop_name} 응답 코드: {res.status_code}, 본문 길이: {len(res.text)}")
+            print(f"[디버그 9625바이트 제목] {soup.title.string.strip() if soup.title and soup.title.string else '제목없음'}")
+            print(f"[디버그 9625바이트 텍스트 요약] {' '.join(soup.get_text().split())[:300]}")
+            print(f"[디버그 본문 앞 300자] {res.text[:300]}")
 
         days = extract_days(soup)
         if not days:
