@@ -15,6 +15,10 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
+# 파일 저장 경로 설정 (현재 스크립트 위치 기준)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+JSON_PATH = os.path.join(BASE_DIR, "menu.json")
+
 BASE_URL = "https://coop.knu.ac.kr/sub03/sub01_01.html"
 SCRAPER_KEY = os.environ.get("SCRAPER_API_KEY", "").strip()
 
@@ -37,19 +41,9 @@ DIRECT_REQUEST_COUNT = 0
 PROXY_REQUEST_COUNT = 0
 
 def fetch_html(target_url, max_retries=2):
-    """
-    [2중 스마트 요청 (Smart Fallback & Retry) 로직]
-    1. 1차 시도 (직접 요청):
-       - 로컬 PC 등 국내 IP 환경에서는 직접 연결하여 ScraperAPI 크레딧 소모 0회 달성.
-    2. 2차 시도 (ScraperAPI 프록시 우회):
-       - 해외 IP(GitHub Actions 등)로 인해 403 차단, 방화벽 거부, 타임아웃 발생 시 즉시 ScraperAPI로 전환.
-       - 한 번 차단이 감지되면(DIRECT_BLOCKED=True), 이후 식당 요청은 타임아웃 대기 없이 바로 프록시로 실행하여 속도 최적화.
-    3. 최대 2회 지수 백오프 재시도로 일시적 네트워크 오류 극복.
-    """
     global DIRECT_BLOCKED, DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT
 
     for attempt in range(max_retries):
-        # 1차: 직접 요청 시도 (이미 차단된 환경이 아니면 우선 시도)
         if not DIRECT_BLOCKED:
             try:
                 res = session.get(target_url, timeout=8)
@@ -66,7 +60,6 @@ def fetch_html(target_url, max_retries=2):
                 else:
                     print(f"[경고] 직접 연결 실패 ({attempt + 1}/{max_retries}): {e}")
 
-        # 2차: ScraperAPI 프록시 요청
         if SCRAPER_KEY:
             try:
                 PROXY_REQUEST_COUNT += 1
@@ -85,18 +78,13 @@ def fetch_html(target_url, max_retries=2):
     raise RuntimeError(f"HTML 요청 최종 실패: {target_url}")
 
 def get_next_week_seldate(soup_main, now_kst):
-    """
-    메인 페이지 링크 중 다음주 버튼(b_nextweek.gif)의 selDate 파라미터를 추출하거나
-    다음 주 월요일 날짜를 계산하여 반환
-    """
     for a in soup_main.find_all("a", href=True):
         href = a["href"]
         if "selDate=" in href and any(img for img in a.find_all("img") if "nextweek" in img.get("src", "")):
             m = re.search(r"selDate=([\d\-]+)", href)
             if m:
                 return m.group(1)
-    # 폴백: 다음 주 월요일 날짜 계산
-    days_ahead = 7 - now_kst.weekday()  # 일요일(6)이면 1일 뒤(월요일)
+    days_ahead = 7 - now_kst.weekday()
     next_monday = now_kst + timedelta(days=days_ahead)
     return next_monday.strftime("%Y-%m-%d")
 
@@ -191,9 +179,6 @@ def parse_cell(td_el):
     }]
 
 def crawl_menus(target_shops, sel_date=None):
-    """
-    지정된 sel_date(없으면 기본 이번 주) 기준으로 식당 목록을 순회하며 식단을 크롤링
-    """
     all_shops_data = {}
     all_days = []
     total_items_count = 0
@@ -279,7 +264,6 @@ def main():
     
     print(f"[실행 시각] {now_kst.strftime('%Y-%m-%d %H:%M:%S')} (일요일 여부: {is_sunday})")
 
-    # 1. 메인 페이지 로드 및 동적 식당 목록 추출
     shops = {}
     next_week_date = None
     try:
@@ -309,12 +293,10 @@ def main():
     notice_message = ""
     is_next_week_loaded = False
     
-    # 2. 일요일인 경우: 다음 주 식단 우선 수집 시도
     if is_sunday and next_week_date:
         print(f"[시도] 일요일이므로 다음 주 식단 수집을 먼저 시도합니다 (selDate={next_week_date})...")
         days, data, sc_count, item_count = crawl_menus(shops, sel_date=next_week_date)
         
-        # 다음 주 식단에 실제 등록된 메뉴가 유의미하게 존재하는지 확인 (예: 총 메뉴 수 10개 이상)
         if sc_count >= 2 and item_count >= 10:
             print(f"[성공] 다음 주 식단이 정상 등록되어 있습니다 (총 메뉴 {item_count}개).")
             all_days, all_shops_data = days, data
@@ -325,21 +307,19 @@ def main():
             print("[폴백] 이전 식단(현재 기본 페이지)을 수집합니다...")
             all_days, all_shops_data, sc_count, _ = crawl_menus(shops, sel_date=None)
     else:
-        # 평일 또는 토요일: 일반 수집
         all_days, all_shops_data, sc_count, _ = crawl_menus(shops, sel_date=None)
 
-    # 3. 최소 유효성 검사 (너무 실패가 많으면 기존 menu.json 보호)
     if len(all_days) == 0 or sc_count < 2:
         print(f"[크롤링 중단] 유효 수집 식당 부족 ({sc_count}곳). 기존 menu.json을 유지합니다.")
-        # 만약 이전 menu.json이 있다면 notice 메시지만 업데이트 시도
-        if os.path.exists("menu.json") and notice_message:
+        if os.path.exists(JSON_PATH) and notice_message:
             try:
-                with open("menu.json", "r", encoding="utf-8") as f:
+                with open(JSON_PATH, "r", encoding="utf-8") as f:
                     old_data = json.load(f)
                 old_data["notice"] = notice_message
-                with open("menu.json", "w", encoding="utf-8") as f:
+                old_data["last_checked"] = now_kst.strftime("%Y-%m-%d %H:%M:%S")
+                with open(JSON_PATH, "w", encoding="utf-8") as f:
                     json.dump(old_data, f, ensure_ascii=False, indent=2)
-                print("[알림] 기존 menu.json에 안내 문구(notice)를 추가했습니다.")
+                print("[알림] 기존 menu.json에 안내 문구 및 점검 시각을 갱신했습니다.")
             except Exception as e:
                 pass
         sys.exit(1)
@@ -347,6 +327,7 @@ def main():
     now_str = now_kst.strftime("%Y-%m-%d %H:%M:%S")
     result = {
         "updated_at": now_str,
+        "last_checked": now_str, # 봇 실행 점검 시간 추가
         "notice": notice_message,
         "is_next_week": is_next_week_loaded,
         "days": all_days,
@@ -354,7 +335,7 @@ def main():
         "data": all_shops_data
     }
 
-    with open("menu.json", "w", encoding="utf-8") as f:
+    with open(JSON_PATH, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     print("\n" + "=" * 55)
