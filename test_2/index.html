@@ -493,7 +493,8 @@
         const btn = document.createElement("button");
         btn.className = `day-btn ${idx === targetIdx ? "active" : ""}`;
         btn.innerHTML = `
-          <span class="day-name">${dayName}</span>${dayDate ? `<span class="day-date">${dayDate}</span>` : ""}
+          <span class="day-name">${dayName}</span>
+          ${dayDate ? `<span class="day-date">${dayDate}</span>` : ""}
         `;
 
         btn.onclick = () => {
@@ -597,13 +598,47 @@
             hasAnyItem = true;
             
             const timeBadge = mealInfo.time 
-              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG}${mealInfo.time}</span>` 
+              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG} ${mealInfo.time}</span>` 
               : "";
 
             mealBlocksHtml += `
               <div class="meal-block">
                 <div class="meal-header">
-                  <span class="meal-badge">${mType}</span>${timeBadge}
+                  <span class="meal-badge">${mType}</span>
+                  ${timeBadge}
                 </div>
                 <ul class="meal-items">
-                  ${mealInfo.items.map(
+                  ${mealInfo.items.map(formatMenuItem).join("")}
+                </ul>
+              </div>
+            `;
+          }
+        });
+
+        if (hasAnyItem) {
+          renderedAny = true;
+          const card = document.createElement("div");
+          card.className = "shop-card";
+          card.innerHTML = `
+            <div class="shop-header">
+              <span class="shop-name">${shop}</span>
+            </div>
+            ${mealBlocksHtml}
+          `;
+          container.appendChild(card);
+        }
+      });
+
+      if (!renderedAny) {
+        container.innerHTML = `
+          <div class="no-data">
+            선택한 조건 (${selectedDay}${selectedMeal !== "ALL" ? " / " + selectedMeal : ""}${selectedShop !== "ALL" ? " / " + selectedShop : ""})에 등록된 식단 정보가 없습니다.
+          </div>
+        `;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
