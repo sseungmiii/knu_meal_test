@@ -310,19 +310,25 @@ def main():
         all_days, all_shops_data, sc_count, _ = crawl_menus(shops, sel_date=None)
 
     if len(all_days) == 0 or sc_count < 2:
-        print(f"[크롤링 중단] 유효 수집 식당 부족 ({sc_count}곳). 기존 menu.json을 유지합니다.")
-        if os.path.exists(JSON_PATH) and notice_message:
+        print(f"[크롤링 경고] 유효 수집 식당 부족 ({sc_count}곳). 기존 menu.json의 식단 데이터를 유지하고 점검 시간만 갱신합니다.")
+        if os.path.exists(JSON_PATH):
             try:
                 with open(JSON_PATH, "r", encoding="utf-8") as f:
                     old_data = json.load(f)
-                old_data["notice"] = notice_message
+                
+                # 기존 식단 데이터는 유지하되 점검 시간 및 안내 문구 갱신
                 old_data["last_checked"] = now_kst.strftime("%Y-%m-%d %H:%M:%S")
+                if notice_message:
+                    old_data["notice"] = notice_message
+                
                 with open(JSON_PATH, "w", encoding="utf-8") as f:
                     json.dump(old_data, f, ensure_ascii=False, indent=2)
-                print("[알림] 기존 menu.json에 안내 문구 및 점검 시각을 갱신했습니다.")
+                print("[알림] 기존 menu.json 점검 시각 갱신 완료.")
             except Exception as e:
-                pass
-        sys.exit(1)
+                print(f"[오류] 기존 menu.json 갱신 중 에러: {e}")
+        
+        # sys.exit(1)을 지우거나 sys.exit(0)으로 변경하여 커밋 단계가 실행되도록 함
+        return
 
     now_str = now_kst.strftime("%Y-%m-%d %H:%M:%S")
     result = {
