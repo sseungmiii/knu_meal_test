@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>경북대학교 학식 식단표 (테스트)</title>
+  <style>
+    :root {
+      --primary: #c8102e;
+      --primary-light: #fbebee;
+      --primary-hover: #a50d25;
+      --bg: #f8f9fa;
+      --card-bg: #ffffff;
+      --text: #212529;
+      --text-muted: #6c757d;
+      --border: #e9ecef;
+      --border-dark: #dee2e6;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 1rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      padding: 1.2rem 0 0.8rem;
+    }
+    .header-title-wrap {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.2rem;
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: -0.5px;
+    }
+    .author-tag {
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: #adb5bd;
+      letter-spacing: 0.3px;
+      user-select: none;
+      transition: color 0.2s ease;
+    }
+    .author-tag:hover {
+      color: var(--primary);
+    }
+    .updated-at {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* 알림/공지 배너 (다음 주 식단 미등록 등) */
+    .notice-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #fff8e6;
+      border: 1px solid #ffd591;
+      color: #ad6800;
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      margin: 0.5rem 0 0.8rem;
+      box-shadow: 0 2px 6px rgba(217, 119, 6, 0.08);
+      word-break: keep-all;
+    }
+    .notice-icon {
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+    
+    /* 컨트롤러 상단 고정 */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin: 0.8rem 0 1.5rem;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      padding: 0.5rem 0 0.8rem;
+      z-index: 20;
+      backdrop-filter: blur(8px);
+    }
+
+    /* 1. 요일 탭 (6등분 상대 길이 그리드) */
+    .day-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0.35rem;
+      width: 100%;
+    }
+    .day-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5rem 0.2rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border-dark);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .day-btn:hover {
+      border-color: var(--primary);
+    }
+    .day-btn .day-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .day-btn .day-date {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+    .day-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      box-shadow: 0 3px 8px rgba(200, 16, 46, 0.28);
+    }
+    .day-btn.active .day-name,
+    .day-btn.active .day-date {
+      color: #ffffff;
+    }
+
+    /* 2. 식사 선택 탭 (조식/중식/석식) */
+    .meal-segment {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.35rem;
+      background: #e9ecef;
+      padding: 3px;
+      border-radius: 12px;
+    }
+    .meal-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
+      padding: 0.45rem 0.4rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      border: none;
+      background: transparent;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .meal-btn.active {
+      background: var(--card-bg);
+      color: var(--primary);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+    }
+
+    /* 3. 식당별 가로 스크롤 필터 */
+    .filter-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .filter-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding-left: 0.2rem;
+    }
+    .shop-scroll-group {
+      display: flex;
+      gap: 0.4rem;
+      overflow-x: auto;
+      padding-bottom: 0.2rem;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shop-scroll-group::-webkit-scrollbar {
+      display: none;
+    }
+    .shop-chip {
+      background: var(--card-bg);
+      border: 1px solid var(--border-dark);
+      border-radius: 20px;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.18s ease;
+      flex-shrink: 0;
+    }
+    .shop-chip:hover {
+      border-color: var(--primary);
+    }
+    .shop-chip.active {
+      background: #343a40;
+      color: #ffffff;
+      border-color: #343a40;
+    }
+
+    /* 메인 식단 카드 그리드 */
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.1rem;
+    }
+    .shop-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .shop-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+    }
+    .shop-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--primary-light);
+      padding-bottom: 0.5rem;
+      margin-bottom: 0.9rem;
+    }
+    .shop-name {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .meal-block {
+      margin-bottom: 1rem;
+      padding: 0.7rem;
+      background: #fdfdfd;
+      border: 1px solid #f1f3f5;
+      border-radius: 10px;
+    }
+    .meal-block:last-child {
+      margin-bottom: 0;
+    }
+    .meal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .meal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--primary);
+    }
+    
+    /* 눈에 띄는 시계 아이콘 + 시간 뱃지 */
+    .meal-time-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #a50d25;
+      background: #ffeeef;
+      padding: 3px 8px;
+      border-radius: 20px;
+      border: 1px solid #ffccd1;
+      letter-spacing: -0.2px;
+    }
+    .meal-time-badge svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+
+    /* 메뉴 아이템 및 가격 분리 표시 */
+    .meal-items {
+      list-style: none;
+      font-size: 0.88rem;
+    }
+    .meal-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.5rem;
+      padding: 0.3rem 0;
+      border-bottom: 1px dashed #f1f3f5;
+    }
+    .meal-item:last-child {
+      border-bottom: none;
+    }
+    .item-name {
+      flex: 1;
+      word-break: keep-all;
+    }
+    .item-price {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #e03131;
+      background: #fff5f5;
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .no-data {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 3.5rem 1rem;
+      color: var(--text-muted);
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px dashed var(--border-dark);
+      font-size: 0.95rem;
+    }
+    .loading {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--text-muted);
+    }
+
+    /* 푸터 스타일 */
+    footer {
+      margin-top: 3.5rem;
+      padding: 2rem 1rem 1.5rem;
+      border-top: 1px solid var(--border-dark);
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+    .footer-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .footer-source {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .footer-source a {
+      color: var(--primary);
+      text-decoration: underline;
+      word-break: break-all;
+    }
+    .footer-disclaimer {
+      font-size: 0.76rem;
+      color: #868e96;
+      margin-bottom: 0.4rem;
+    }
+    .footer-copy {
+      font-weight: 500;
+      color: #868e96;
+    }
+    .footer-copy strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+    .footer-contact a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .footer-contact a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-title-wrap">
+      <h1>경북대학교 학식 식단표</h1>
+      <span class="author-tag">by sseungmiii</span>
+    </div>
+    <div id="updatedAt" class="updated-at">식단 불러오는 중...</div>
+  </header>
+
+  <!-- 다음 주 식단 미등록 / 안내 사항 배너 -->
+  <div id="noticeBanner" class="notice-banner" style="display: none;">
+    <span class="notice-icon">📢</span>
+    <span id="noticeText" class="notice-text"></span>
+  </div>
+
+  <div class="controls">
+    <!-- 1. 월~토 6등분 상대 길이 요일 선택기 -->
+    <div id="daySelector" class="day-grid"></div>
+
+    <!-- 2. 조식 / 중식 / 석식 직관적 세그먼트 필터 -->
+    <div id="mealSelector" class="meal-segment">
+      <button class="meal-btn active" data-meal="ALL">🍽️ 전체</button>
+      <button class="meal-btn" data-meal="조식">🌅 조식</button>
+      <button class="meal-btn" data-meal="중식">☀️ 중식</button>
+      <button class="meal-btn" data-meal="석식">🌙 석식</button>
+    </div>
+
+    <!-- 3. 식당별 가로 필터 (전체 및 특정 식당 선택) -->
+    <div class="filter-section">
+      <div class="filter-label">식당 필터</div>
+      <div id="shopSelector" class="shop-scroll-group"></div>
+    </div>
+  </div>
+
+  <main id="menuContainer" class="menu-grid">
+    <div class="loading">식단 데이터를 가져오고 있습니다...</div>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <p class="footer-source">
+        데이터 출처 : 경북대학교 생활협동조합 사이트 (<a href="https://coop.knu.ac.kr/" target="_blank" rel="noopener noreferrer">https://coop.knu.ac.kr/</a>)
+      </p>
+      <p class="footer-disclaimer">본 서비스는 학생 개인 프로젝트이며, 생협 공식 앱이 아닙니다.</p>
+      <p class="footer-copy">© 2026 <strong>sseungmiii</strong>. All rights reserved.</p>
+      <p class="footer-contact">
+        Contact: <a href="mailto:asdf0717333@naver.com">asdf0717333@naver.com</a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    let rawData = null;
+    let selectedDay = "";
+    let selectedMeal = "ALL";
+    let selectedShop = "ALL";
+
+    // 시계 SVG 아이콘
+    const CLOCK_ICON_SVG = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 15 14"></polyline>
+      </svg>
+    `;
+
+    async function init() {
+      try {
+        const res = await fetch(`./menu.json?t=${new Date().getTime()}`);
+        if (!res.ok) throw new Error("menu.json 로드 실패");
+        rawData = await res.json();
+        
+        document.getElementById("updatedAt").textContent = `최근 업데이트: ${rawData.updated_at || "정보 없음"}`;
+        
+        // 안내 문구(notice)가 있을 경우 배너 표시
+        if (rawData.notice && rawData.notice.trim() !== "") {
+          const banner = document.getElementById("noticeBanner");
+          const noticeText = document.getElementById("noticeText");
+          noticeText.textContent = rawData.notice;
+          banner.style.display = "flex";
+        }
+
+        setupDays(rawData.days);
+        setupMeals();
+        setupShops(rawData.shops);
+        render();
+      } catch (err) {
+        document.getElementById("menuContainer").innerHTML = 
+          `<div class="no-data">식단 데이터를 불러오지 못했습니다.<br/>(${err.message})</div>`;
+      }
+    }
+
+    // 1. 요일 탭 설정 (일요일인 경우 월요일 자동 기본 선택)
+    function setupDays(days) {
+      const container = document.getElementById("daySelector");
+      container.innerHTML = "";
+
+      if (!days || days.length === 0) return;
+
+      const todayIdx = new Date().getDay(); // 0: 일요일, 1: 월요일, ...
+      const dayMap = ["일", "월", "화", "수", "목", "금", "토"];
+      const currentDayChar = dayMap[todayIdx];
+
+      // 일요일이거나 목록에 없으면 기본값으로 0(월요일)을 선택
+      let targetIdx = days.findIndex(d => d.includes(currentDayChar));
+      if (targetIdx === -1) targetIdx = 0;
+
+      selectedDay = days[targetIdx];
+
+      days.forEach((dayStr, idx) => {
+        const m = dayStr.match(/([월화수목금토])\((.*?)\)/);
+        const dayName = m ? m[1] : dayStr;
+        const dayDate = m ? m[2] : "";
+
+        const btn = document.createElement("button");
+        btn.className = `day-btn ${idx === targetIdx ? "active" : ""}`;
+        btn.innerHTML = `
+          <span class="day-name">${dayName}</span>
+          ${dayDate ? `<span class="day-date">${dayDate}</span>` : ""}
+        `;
+
+        btn.onclick = () => {
+          document.querySelectorAll("#daySelector .day-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedDay = dayStr;
+          render();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    // 2. 식사 선택 탭 이벤트 설정
+    function setupMeals() {
+      document.querySelectorAll("#mealSelector .meal-btn").forEach(btn => {
+        btn.onclick = () => {
+          document.querySelectorAll("#mealSelector .meal-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedMeal = btn.dataset.meal;
+          render();
+        };
+      });
+    }
+
+    // 3. 식당 필터 칩 버튼 동적 생성
+    function setupShops(shops) {
+      const container = document.getElementById("shopSelector");
+      container.innerHTML = "";
+
+      const allBtn = document.createElement("button");
+      allBtn.className = "shop-chip active";
+      allBtn.textContent = "전체 식당";
+      allBtn.onclick = () => {
+        document.querySelectorAll("#shopSelector .shop-chip").forEach(b => b.classList.remove("active"));
+        allBtn.classList.add("active");
+        selectedShop = "ALL";
+        render();
+      };
+      container.appendChild(allBtn);
+
+      if (!shops) return;
+
+      shops.forEach(shop => {
+        const btn = document.createElement("button");
+        btn.className = "shop-chip";
+        btn.textContent = shop;
+        btn.onclick = () => {
+          document.querySelectorAll("#shopSelector .shop-chip").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedShop = shop;
+          render();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    // 메뉴 문자열에서 메뉴명과 가격을 분리
+    function formatMenuItem(rawItem) {
+      const priceMatch = rawItem.match(/^(.*?)(￦\s*[\d,]+|[\d,]+\s*원)$/);
+      if (priceMatch) {
+        const name = priceMatch[1].trim();
+        const price = priceMatch[2].trim();
+        return `
+          <li class="meal-item">
+            <span class="item-name">${name}</span>
+            <span class="item-price">${price}</span>
+          </li>
+        `;
+      }
+      return `
+        <li class="meal-item">
+          <span class="item-name">${rawItem}</span>
+        </li>
+      `;
+    }
+
+    // 식단 렌더링
+    function render() {
+      const container = document.getElementById("menuContainer");
+      container.innerHTML = "";
+
+      if (!rawData || !rawData.data) {
+        container.innerHTML = `<div class="no-data">등록된 식단 정보가 없습니다.</div>`;
+        return;
+      }
+
+      let renderedAny = false;
+
+      const targetShops = (selectedShop === "ALL") ? rawData.shops : [selectedShop];
+
+      targetShops.forEach(shop => {
+        const shopDaily = rawData.data[shop] ? rawData.data[shop][selectedDay] : null;
+        if (!shopDaily) return;
+
+        let mealsToRender = ["조식", "중식", "석식"];
+        if (selectedMeal !== "ALL") {
+          mealsToRender = [selectedMeal];
+        }
+
+        let mealBlocksHtml = "";
+        let hasAnyItem = false;
+
+        mealsToRender.forEach(mType => {
+          const mealInfo = shopDaily[mType];
+          if (mealInfo && mealInfo.items && mealInfo.items.length > 0) {
+            hasAnyItem = true;
+            
+            const timeBadge = mealInfo.time 
+              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG} ${mealInfo.time}</span>` 
+              : "";
+
+            mealBlocksHtml += `
+              <div class="meal-block">
+                <div class="meal-header">
+                  <span class="meal-badge">${mType}</span>
+                  ${timeBadge}
+                </div>
+                <ul class="meal-items">
+                  ${mealInfo.items.map(formatMenuItem).join("")}
+                </ul>
+              </div>
+            `;
+          }
+        });
+
+        if (hasAnyItem) {
+          renderedAny = true;
+          const card = document.createElement("div");
+          card.className = "shop-card";
+          card.innerHTML = `
+            <div class="shop-header">
+              <span class="shop-name">${shop}</span>
+            </div>
+            ${mealBlocksHtml}
+          `;
+          container.appendChild(card);
+        }
+      });
+
+      if (!renderedAny) {
+        container.innerHTML = `
+          <div class="no-data">
+            선택한 조건 (${selectedDay}${selectedMeal !== "ALL" ? " / " + selectedMeal : ""}${selectedShop !== "ALL" ? " / " + selectedShop : ""})에 등록된 식단 정보가 없습니다.
+          </div>
+        `;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
