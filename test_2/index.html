@@ -64,7 +64,6 @@
       color: var(--text-muted);
     }
 
-    /* 알림/공지 배너 (다음 주 식단 미등록 등) */
     .notice-banner {
       display: flex;
       align-items: center;
@@ -85,7 +84,6 @@
       flex-shrink: 0;
     }
     
-    /* 컨트롤러 상단 고정 */
     .controls {
       display: flex;
       flex-direction: column;
@@ -99,7 +97,6 @@
       backdrop-filter: blur(8px);
     }
 
-    /* 1. 요일 탭 (6등분 상대 길이 그리드) */
     .day-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
@@ -142,7 +139,6 @@
       color: #ffffff;
     }
 
-    /* 2. 식사 선택 탭 (조식/중식/석식) */
     .meal-segment {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -173,7 +169,6 @@
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
     }
 
-    /* 3. 식당별 가로 스크롤 필터 */
     .filter-section {
       display: flex;
       flex-direction: column;
@@ -218,7 +213,6 @@
       border-color: #343a40;
     }
 
-    /* 메인 식단 카드 그리드 */
     .menu-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -277,7 +271,6 @@
       color: var(--primary);
     }
     
-    /* 눈에 띄는 시계 아이콘 + 시간 뱃지 */
     .meal-time-badge {
       display: inline-flex;
       align-items: center;
@@ -297,7 +290,6 @@
       flex-shrink: 0;
     }
 
-    /* 메뉴 아이템 및 가격 분리 표시 */
     .meal-items {
       list-style: none;
       font-size: 0.88rem;
@@ -344,7 +336,6 @@
       color: var(--text-muted);
     }
 
-    /* 푸터 스타일 */
     footer {
       margin-top: 3.5rem;
       padding: 2rem 1rem 1.5rem;
@@ -401,17 +392,14 @@
     <div id="updatedAt" class="updated-at">식단 불러오는 중...</div>
   </header>
 
-  <!-- 다음 주 식단 미등록 / 안내 사항 배너 -->
   <div id="noticeBanner" class="notice-banner" style="display: none;">
     <span class="notice-icon">📢</span>
     <span id="noticeText" class="notice-text"></span>
   </div>
 
   <div class="controls">
-    <!-- 1. 월~토 6등분 상대 길이 요일 선택기 -->
     <div id="daySelector" class="day-grid"></div>
 
-    <!-- 2. 조식 / 중식 / 석식 직관적 세그먼트 필터 -->
     <div id="mealSelector" class="meal-segment">
       <button class="meal-btn active" data-meal="ALL">🍽️ 전체</button>
       <button class="meal-btn" data-meal="조식">🌅 조식</button>
@@ -419,7 +407,6 @@
       <button class="meal-btn" data-meal="석식">🌙 석식</button>
     </div>
 
-    <!-- 3. 식당별 가로 필터 (전체 및 특정 식당 선택) -->
     <div class="filter-section">
       <div class="filter-label">식당 필터</div>
       <div id="shopSelector" class="shop-scroll-group"></div>
@@ -449,7 +436,6 @@
     let selectedMeal = "ALL";
     let selectedShop = "ALL";
 
-    // 시계 SVG 아이콘
     const CLOCK_ICON_SVG = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"></circle>
@@ -463,9 +449,10 @@
         if (!res.ok) throw new Error("menu.json 로드 실패");
         rawData = await res.json();
         
-        document.getElementById("updatedAt").textContent = `최근 업데이트: ${rawData.updated_at || "정보 없음"}`;
+        // last_checked 필드를 우선 활용하여 최근 봇 점검 시간 표시
+        const timeStr = rawData.last_checked || rawData.updated_at || "정보 없음";
+        document.getElementById("updatedAt").textContent = `최근 점검: ${timeStr}`;
         
-        // 안내 문구(notice)가 있을 경우 배너 표시
         if (rawData.notice && rawData.notice.trim() !== "") {
           const banner = document.getElementById("noticeBanner");
           const noticeText = document.getElementById("noticeText");
@@ -483,18 +470,16 @@
       }
     }
 
-    // 1. 요일 탭 설정 (일요일인 경우 월요일 자동 기본 선택)
     function setupDays(days) {
       const container = document.getElementById("daySelector");
       container.innerHTML = "";
 
       if (!days || days.length === 0) return;
 
-      const todayIdx = new Date().getDay(); // 0: 일요일, 1: 월요일, ...
+      const todayIdx = new Date().getDay();
       const dayMap = ["일", "월", "화", "수", "목", "금", "토"];
       const currentDayChar = dayMap[todayIdx];
 
-      // 일요일이거나 목록에 없으면 기본값으로 0(월요일)을 선택
       let targetIdx = days.findIndex(d => d.includes(currentDayChar));
       if (targetIdx === -1) targetIdx = 0;
 
@@ -508,8 +493,7 @@
         const btn = document.createElement("button");
         btn.className = `day-btn ${idx === targetIdx ? "active" : ""}`;
         btn.innerHTML = `
-          <span class="day-name">${dayName}</span>
-          ${dayDate ? `<span class="day-date">${dayDate}</span>` : ""}
+          <span class="day-name">${dayName}</span>${dayDate ? `<span class="day-date">${dayDate}</span>` : ""}
         `;
 
         btn.onclick = () => {
@@ -522,7 +506,6 @@
       });
     }
 
-    // 2. 식사 선택 탭 이벤트 설정
     function setupMeals() {
       document.querySelectorAll("#mealSelector .meal-btn").forEach(btn => {
         btn.onclick = () => {
@@ -534,7 +517,6 @@
       });
     }
 
-    // 3. 식당 필터 칩 버튼 동적 생성
     function setupShops(shops) {
       const container = document.getElementById("shopSelector");
       container.innerHTML = "";
@@ -566,7 +548,6 @@
       });
     }
 
-    // 메뉴 문자열에서 메뉴명과 가격을 분리
     function formatMenuItem(rawItem) {
       const priceMatch = rawItem.match(/^(.*?)(￦\s*[\d,]+|[\d,]+\s*원)$/);
       if (priceMatch) {
@@ -586,7 +567,6 @@
       `;
     }
 
-    // 식단 렌더링
     function render() {
       const container = document.getElementById("menuContainer");
       container.innerHTML = "";
@@ -597,7 +577,6 @@
       }
 
       let renderedAny = false;
-
       const targetShops = (selectedShop === "ALL") ? rawData.shops : [selectedShop];
 
       targetShops.forEach(shop => {
@@ -618,47 +597,13 @@
             hasAnyItem = true;
             
             const timeBadge = mealInfo.time 
-              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG} ${mealInfo.time}</span>` 
+              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG}${mealInfo.time}</span>` 
               : "";
 
             mealBlocksHtml += `
               <div class="meal-block">
                 <div class="meal-header">
-                  <span class="meal-badge">${mType}</span>
-                  ${timeBadge}
+                  <span class="meal-badge">${mType}</span>${timeBadge}
                 </div>
                 <ul class="meal-items">
-                  ${mealInfo.items.map(formatMenuItem).join("")}
-                </ul>
-              </div>
-            `;
-          }
-        });
-
-        if (hasAnyItem) {
-          renderedAny = true;
-          const card = document.createElement("div");
-          card.className = "shop-card";
-          card.innerHTML = `
-            <div class="shop-header">
-              <span class="shop-name">${shop}</span>
-            </div>
-            ${mealBlocksHtml}
-          `;
-          container.appendChild(card);
-        }
-      });
-
-      if (!renderedAny) {
-        container.innerHTML = `
-          <div class="no-data">
-            선택한 조건 (${selectedDay}${selectedMeal !== "ALL" ? " / " + selectedMeal : ""}${selectedShop !== "ALL" ? " / " + selectedShop : ""})에 등록된 식단 정보가 없습니다.
-          </div>
-        `;
-      }
-    }
-
-    init();
-  </script>
-</body>
-</html>
+                  ${mealInfo.items.map(
