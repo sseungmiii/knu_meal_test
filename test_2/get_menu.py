@@ -95,8 +95,10 @@ def extract_days(soup):
         for c in cells:
             txt = c.get_text().strip().replace("\xa0", " ")
             if any(txt.startswith(d) for d in ["월", "화", "수", "목", "금", "토"]) and "(" in txt:
-                found.append(txt)
-        if len(found) >= 5:
+                if txt not in found:  # 중복 추가 방지
+                    found.append(txt)
+        # 공휴일/단축 주간 대응: 운영일이 5개가 안 되더라도 요일이 1개 이상 존재하면 수집하도록 조건 완화
+        if len(found) >= 1:
             return found
     return []
 
