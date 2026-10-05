@@ -163,6 +163,7 @@
     <div class="loading">식단 데이터를 가져오고 있습니다...</div>
   </main>
 
+  <script src="./meal-status.js"></script>
   <script>
     let rawData = null;
     let selectedDay = "";
@@ -173,14 +174,14 @@
         const res = await fetch(`./menu.json?t=${new Date().getTime()}`);
         if (!res.ok) throw new Error("JSON 로드 실패");
         rawData = await res.json();
-        
-        document.getElementById("updatedAt").textContent = `최근 갱신: ${rawData.updated_at || "정보 없음"}`;
-        
+
+        showMenuStatus(rawData);
+
         setupDays(rawData.days);
         setupMeals();
         render();
       } catch (err) {
-        document.getElementById("menuContainer").innerHTML = 
+        document.getElementById("menuContainer").innerHTML =
           `<div class="no-data">식단 데이터를 불러오지 못했습니다.<br/>(${err.message})</div>`;
       }
     }
@@ -191,11 +192,11 @@
 
       if (!days || days.length === 0) return;
 
-      const todayIdx = new Date().getDay(); 
+      const todayIdx = new Date().getDay();
       const dayMap = ["일", "월", "화", "수", "목", "금", "토"];
       const currentDayChar = dayMap[todayIdx];
 
-      let targetIdx = days.findIndex(d => d.includes(currentDayChar));
+      let targetIdx = days.findIndex(d => d.replace(/\s/g, "") === currentMenuDay());
       if (targetIdx === -1) targetIdx = 0;
 
       selectedDay = days[targetIdx];
