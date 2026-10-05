@@ -130,6 +130,12 @@
     .meal-items li:last-child {
       border-bottom: none;
     }
+    .empty-menu {
+      padding: 1.5rem 0.5rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
     .no-data {
       text-align: center;
       padding: 3rem 1rem;
@@ -238,8 +244,7 @@
       let renderedAny = false;
 
       rawData.shops.forEach(shop => {
-        const shopDaily = rawData.data[shop] ? rawData.data[shop][selectedDay] : null;
-        if (!shopDaily) return;
+        const shopDaily = (rawData.data[shop] && rawData.data[shop][selectedDay]) || {};
 
         let mealsToRender = ["조식", "중식", "석식"];
         if (selectedMeal !== "ALL") {
@@ -267,16 +272,14 @@
           }
         });
 
-        if (hasAnyItem) {
-          renderedAny = true;
-          const card = document.createElement("div");
-          card.className = "shop-card";
-          card.innerHTML = `
-            <div class="shop-name">${shop}</div>
-            ${mealBlocksHtml}
-          `;
-          container.appendChild(card);
-        }
+        renderedAny = true;
+        const card = document.createElement("div");
+        card.className = "shop-card";
+        card.innerHTML = `
+          <div class="shop-name">${shop}</div>
+          ${hasAnyItem ? mealBlocksHtml : '<p class="empty-menu">식단 정보가 없습니다.</p>'}
+        `;
+        container.appendChild(card);
       });
 
       if (!renderedAny) {
