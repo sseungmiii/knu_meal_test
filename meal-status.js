@@ -1,3 +1,11 @@
+function sortedShopsForMenu(shops, data, day, meal) {
+  const meals = meal === 'ALL' ? ['조식', '중식', '석식'] : [meal];
+  const hasMenu = shop => meals.some(type =>
+    (data[shop]?.[day]?.[type]?.items?.length || 0) > 0);
+  // Stable sort preserves the original order within each group; keep all cards.
+  return [...shops].sort((a, b) => Number(hasMenu(b)) - Number(hasMenu(a)));
+}
+
 function currentMenuDay(now = new Date()) {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const weekday = ['일', '월', '화', '수', '목', '금', '토'][kst.getUTCDay()];
