@@ -1,8 +1,8 @@
 {
-  "updated_at": "2026-10-18 08:13:02",
-  "last_checked": "2026-10-18 08:13:02",
+  "updated_at": "2026-10-19 08:23:12",
+  "last_checked": "2026-10-19 08:23:12",
   "crawl_status": "success",
-  "notice": "다음 주 식단이 아직 등록되지 않아 지난 식단 정보를 유지합니다.",
+  "notice": "",
   "is_next_week": false,
   "days": [
     "월(10/19)",
