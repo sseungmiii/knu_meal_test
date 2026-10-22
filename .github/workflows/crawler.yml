@@ -3,9 +3,10 @@ name: Daily Meal Crawler
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, codex/meal-crawler-reliability]
     paths:
       - get_menu.py
+      - meal-status.js
       - tests/**
       - .github/workflows/crawler.yml
   schedule:
@@ -33,6 +34,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Test crawler regressions
         run: python -m unittest discover -s tests -v
+      - name: Test status and Korean dates
+        run: node tests/test_meal_status.cjs
       - name: Collect shared meal data
         id: crawl
         continue-on-error: true
@@ -54,7 +57,7 @@ jobs:
           done
           exit 1
       - name: Report collection failure
-        if: steps.crawl.outcome == 'failure'
+        if: always() && steps.crawl.outcome == 'failure'
         run: |
-          echo "::error::Meal collection failed. Previous meals were preserved with a failure status."
+          echo "::error::Meal collection was incomplete or could not be saved. Inspect crawler logs and per-shop status."
           exit 1

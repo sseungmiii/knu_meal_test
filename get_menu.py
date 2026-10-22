@@ -3,6 +3,7 @@ import json
 import re
 import sys
 import time
+import tempfile
 from urllib.parse import quote
 from datetime import datetime, timezone, timedelta
 import requests
@@ -281,9 +282,84 @@ def crawl_menus(target_shops, sel_date=None):
 
     return all_days, all_shops_data, success_count, total_items_count
 
+def atomic_save(data):
+    """Replace only after the complete JSON has reached disk."""
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         dir=os.path.dirname(JSON_PATH), delete=False) as f:
+            temp_path = f.name
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, JSON_PATH)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def valid_week(days, target):
+    """Allow shortened weeks, but reject dates/weekday labels outside the target week."""
+    monday = target.date() - timedelta(days=target.weekday())
+    expected = {
+        f"{'월화수목금토일'[i]}({(monday + timedelta(days=i)).strftime('%m/%d')})"
+        for i in range(7)
+    }
+    normalized = [re.sub(r"\s", "", day) for day in days]
+    return bool(normalized) and len(set(normalized)) == len(normalized) and all(day in expected for day in normalized)
+
+
+def build_result(old, shops, data, target, now, notice="", next_week=False):
+    stamp = now.strftime('%Y-%m-%d %H:%M:%S')
+    merged, statuses, days = {}, {}, []
+    successes = 0
+    shop_names = list(dict.fromkeys([*shops, *old.get('shops', []), *old.get('data', {})]))
+    for shop in shop_names:
+        weekly = data.get(shop, {})
+        valid = valid_week(list(weekly), target) and any(
+            info.get('items') for daily in weekly.values() for info in daily.values())
+        previous = old.get('shop_status', {}).get(shop, {})
+        if valid:
+            successes += 1
+            merged[shop] = weekly
+            statuses[shop] = dict(status='success', last_checked=stamp, last_success=stamp)
+            for day in weekly:
+                if day not in days:
+                    days.append(day)
+        else:
+            merged[shop] = old.get('data', {}).get(shop, {})
+            statuses[shop] = dict(status='failed', last_checked=stamp,
+                                  last_success=previous.get('last_success', old.get('last_checked')),
+                                  message='수집 실패 또는 대상 주간과 날짜가 다릅니다. 이전 식단을 표시합니다.')
+    status = 'success' if successes == len(shop_names) and successes else 'partial' if successes else 'failed'
+    # Keep older day keys selectable without hiding the successful current week.
+    for weekly in merged.values():
+        for day in weekly:
+            if day not in days:
+                days.append(day)
+    result = dict(old, last_checked=stamp, crawl_status=status, shop_status=statuses,
+                  notice=notice, data=merged, days=days, shops=shop_names, is_next_week=next_week)
+    changed = any(result.get(key) != old.get(key) for key in ('data', 'days', 'shops'))
+    result['updated_at'] = stamp if successes and changed else old.get('updated_at')
+    if status == 'failed':
+        result['data'] = old.get('data', {})
+        result['days'] = old.get('days', [])
+        result['is_next_week'] = old.get('is_next_week', False)
+        result['notice'] = '식단 수집에 실패하여 이전 식단을 표시합니다. 실제 갱신 날짜를 확인해주세요.'
+    return result
+
+
 def main():
     kst = timezone(timedelta(hours=9))
     now_kst = datetime.now(kst)
+    old_data = {}
+    if os.path.exists(JSON_PATH):
+        try:
+            with open(JSON_PATH, encoding='utf-8') as f:
+                old_data = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f'[오류] 기존 식단을 읽을 수 없어 덮어쓰지 않습니다: {e}')
+            return 1
     is_sunday = (now_kst.weekday() == 6)
 
     print(f"[실행 시각] {now_kst.strftime('%Y-%m-%d %H:%M:%S')} (일요일 여부: {is_sunday})")
@@ -321,7 +397,8 @@ def main():
         print(f"[시도] 일요일이므로 다음 주 식단 수집을 먼저 시도합니다 (selDate={next_week_date})...")
         days, data, sc_count, item_count = crawl_menus(shops, sel_date=next_week_date)
 
-        if sc_count >= 2 and item_count >= 10:
+        next_target = now_kst + timedelta(days=1)
+        if sc_count >= 2 and item_count >= 10 and valid_week(days, next_target):
             print(f"[성공] 다음 주 식단이 정상 등록되어 있습니다 (총 메뉴 {item_count}개).")
             all_days, all_shops_data = days, data
             is_next_week_loaded = True
@@ -333,57 +410,16 @@ def main():
     else:
         all_days, all_shops_data, sc_count, _ = crawl_menus(shops, sel_date=None)
 
-    if len(all_days) == 0 or sc_count < 2:
-        print(f"[크롤링 경고] 유효 수집 식당 부족 ({sc_count}곳). 기존 menu.json의 식단 데이터를 유지하고 점검 시간만 갱신합니다.")
-        if os.path.exists(JSON_PATH):
-            try:
-                with open(JSON_PATH, "r", encoding="utf-8") as f:
-                    old_data = json.load(f)
-
-                # 기존 식단 데이터는 유지하되 점검 시간 및 안내 문구 갱신
-                old_data["last_checked"] = now_kst.strftime("%Y-%m-%d %H:%M:%S")
-                old_data["crawl_status"] = "failed"
-                old_data["notice"] = "식단 수집에 실패하여 이전 식단을 표시합니다. 실제 갱신 날짜를 확인해주세요."
-
-                with open(JSON_PATH, "w", encoding="utf-8") as f:
-                    json.dump(old_data, f, ensure_ascii=False, indent=2)
-                print("[알림] 기존 menu.json 점검 시각 갱신 완료.")
-            except Exception as e:
-                print(f"[오류] 기존 menu.json 갱신 중 에러: {e}")
-
+    target = now_kst + timedelta(days=1) if is_next_week_loaded else now_kst
+    result = build_result(old_data, shops, all_shops_data, target, now_kst,
+                          notice_message, is_next_week_loaded)
+    try:
+        atomic_save(result)
+    except (OSError, ValueError, TypeError) as e:
+        print(f"[오류] 식단 저장 실패. 기존 파일을 보존합니다: {e}")
         return 1
-
-    now_str = now_kst.strftime("%Y-%m-%d %H:%M:%S")
-    result = {
-        "updated_at": now_str,
-        "last_checked": now_str, # 봇 실행 점검 시간 추가
-        "crawl_status": "success",
-        "notice": notice_message,
-        "is_next_week": is_next_week_loaded,
-        "days": all_days,
-        "shops": list(shops.keys()),
-        "data": all_shops_data
-    }
-
-    with open(JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-
-    print("\n" + "=" * 55)
-    print("[크롤링 수집 통계 리포트]")
-    print(f" - 수집 성공 식당: {sc_count}개")
-    if PROXY_REQUEST_COUNT > 0:
-        print(f" - 크롤링 방식: ScraperAPI 프록시 우회 (해외 IP 차단 대응)")
-        print(f" - 소비한 ScraperAPI 토큰: {PROXY_REQUEST_COUNT}개 (월 5,000회 제한)")
-    else:
-        print(f" - 크롤링 방식: 로컬 직접 요청 (Direct Fetch)")
-        print(f" - 소비한 ScraperAPI 토큰: 0개 (토큰 소모 없음)")
-    if DIRECT_REQUEST_COUNT > 0:
-        print(f" - 직접 요청 성공 횟수: {DIRECT_REQUEST_COUNT}회")
-    print(f" - 데이터 갱신 시각: {now_str}")
-    if notice_message:
-        print(f" - 안내 상태: {notice_message}")
-    print("=" * 55)
-    return 0
+    print(f"[수집 결과] {result['crawl_status']} / 점검: {result['last_checked']}")
+    return 0 if result['crawl_status'] == 'success' else 1
 
 if __name__ == "__main__":
     sys.exit(main())
