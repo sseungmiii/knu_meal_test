@@ -3,9 +3,10 @@ name: Daily Meal Crawler
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, codex/meal-crawler-reliability]
     paths:
       - get_menu.py
+      - meal-status.js
       - tests/**
       - .github/workflows/crawler.yml
   schedule:
