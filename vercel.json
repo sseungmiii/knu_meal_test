@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "node scripts/build-static.cjs",
+  "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/menu.json",
+      "destination": "https://raw.githubusercontent.com/sseungmiii/knu_meal_test/main/menu.json"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/menu.json",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    }
+  ]
+}

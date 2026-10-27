@@ -1,28 +1,52 @@
-name: Daily Meal Crawler
-
+name: Meal validation and daily collection
 on:
   workflow_dispatch:
-  push:
-    branches: [main, codex/meal-crawler-reliability]
-    paths:
-      - get_menu.py
-      - meal-status.js
-      - tests/**
-      - .github/workflows/crawler.yml
   schedule:
     - cron: '23 21 * * *'
-
+  push:
+    branches: [main]
+    paths:
+      - get_menu.py
+      - index.html
+      - meal-config.js
+      - meal-status.js
+      - test_2/**
+      - scripts/**
+      - tests/**
+      - requirements.txt
+      - vercel.json
+      - .github/workflows/crawler.yml
+  pull_request:
+    branches: [main]
 permissions:
-  contents: write
-
+  contents: read
 concurrency:
   group: meal-data-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
-  run-crawler:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: node tests/test_meal_status.cjs
+      - run: node scripts/build-static.cjs
+      - run: node --test tests/test_data_contract.cjs
+  collect:
+    needs: validate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,12 +54,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Test crawler regressions
-        run: python -m unittest discover -s tests -v
-      - name: Test status and Korean dates
-        run: node tests/test_meal_status.cjs
+      - run: pip install -r requirements.txt
       - name: Collect shared meal data
         id: crawl
         continue-on-error: true
@@ -59,5 +78,5 @@ jobs:
       - name: Report collection failure
         if: always() && steps.crawl.outcome == 'failure'
         run: |
-          echo "::error::Meal collection was incomplete or could not be saved. Inspect crawler logs and per-shop status."
+          echo "::error::Meal collection was incomplete. Previous meals are retained where possible."
           exit 1
