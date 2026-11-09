@@ -2,11 +2,11 @@ name: Meal validation and daily collection
 on:
   workflow_dispatch:
   schedule:
-    # KST 06:17 primary, then 07:17 / 08:17 / 09:17 if incomplete.
-    - cron: '17 21 * * *'
-    - cron: '17 22 * * *'
-    - cron: '17 23 * * *'
-    - cron: '17 0 * * *'
+    # KST 02:47 primary, then 03:47 / 04:47 / 05:47 if incomplete.
+    - cron: '47 17 * * *'
+    - cron: '47 18 * * *'
+    - cron: '47 19 * * *'
+    - cron: '47 20 * * *'
   push:
     branches: [main]
     paths:
@@ -71,10 +71,10 @@ jobs:
           SCHEDULE_SLOT: ${{ github.event.schedule }}
         run: |
           case "$SCHEDULE_SLOT" in
-            "17 21 * * *") python get_menu.py --slot 0 ;;
-            "17 22 * * *") python get_menu.py --slot 1 ;;
-            "17 23 * * *") python get_menu.py --slot 2 ;;
-            "17 0 * * *") python get_menu.py --slot 3 ;;
+            "47 17 * * *") python get_menu.py --slot 0 ;;
+            "47 18 * * *") python get_menu.py --slot 1 ;;
+            "47 19 * * *") python get_menu.py --slot 2 ;;
+            "47 20 * * *") python get_menu.py --slot 3 ;;
             "") python get_menu.py ;;
             *) exit 1 ;;
           esac
