@@ -27,7 +27,11 @@ test('Vercel menu.json forwards to the same canonical data', () => {
 });
 test('static output excludes crawler source, private files and stale menu snapshots', () => {
   const output = path.join(root, 'public');
-  const files = fs.readdirSync(output, {recursive: true}).filter(name => fs.statSync(path.join(output, name)).isFile());
+  const list = dir => fs.readdirSync(dir, {withFileTypes: true}).flatMap(entry => {
+    const file = path.join(dir, entry.name);
+    return entry.isDirectory() ? list(file) : [path.relative(output, file)];
+  });
+  const files = list(output);
   assert.deepEqual(files.map(name => name.replaceAll('\\', '/')).sort(),
     ['index.html', 'meal-config.js', 'meal-status.js', 'test_2/index.html'].sort());
 });

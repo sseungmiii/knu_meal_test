@@ -37,56 +37,34 @@ session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 })
 
-DIRECT_BLOCKED = False
 DIRECT_REQUEST_COUNT = 0
 PROXY_REQUEST_COUNT = 0
 
+
 def fetch_html(target_url, max_retries=2):
-    global DIRECT_BLOCKED, DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT
+    global DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT
+    for attempt in range(1 if SCRAPER_KEY else max_retries):
+        try:
+            DIRECT_REQUEST_COUNT += 1
+            res = session.get(target_url, timeout=8)
+            if valid_response(res):
+                return res
+        except requests.RequestException:
+            pass
+        if not SCRAPER_KEY and attempt + 1 < max_retries:
+            time.sleep(1.5)
 
-    for attempt in range(max_retries):
-        if not DIRECT_BLOCKED:
-            try:
-                res = session.get(target_url, timeout=8)
-                if valid_response(res):
-                    DIRECT_REQUEST_COUNT += 1
-                    return res
-                print(f"[감지] 직접 응답 무효 (HTTP {res.status_code}, {len(res.content)} bytes). 프록시로 재시도합니다.")
-                DIRECT_BLOCKED = bool(SCRAPER_KEY)
-            except Exception as e:
-                if SCRAPER_KEY:
-                    print(f"[감지] 직접 연결 불가({type(e).__name__}). 프록시로 재시도합니다.")
-                    DIRECT_BLOCKED = True
-                else:
-                    print(f"[경고] 직접 연결 실패 ({attempt + 1}/{max_retries}): {type(e).__name__}")
-
-        if SCRAPER_KEY:
-            try:
-                PROXY_REQUEST_COUNT += 1
-                proxy_url = f"https://api.scraperapi.com?api_key={SCRAPER_KEY}&url={quote(target_url)}&country_code=kr"
-                res_proxy = session.get(proxy_url, timeout=25)
-                if valid_response(res_proxy):
-                    return res_proxy
-                else:
-                    print(f"[경고] 프록시 응답 무효 (HTTP {res_proxy.status_code}, {len(res_proxy.content)} bytes)")
-            except Exception as proxy_e:
-                print(f"[경고] 프록시 재시도 ({attempt + 1}/{max_retries}): {type(proxy_e).__name__}")
-
-        if attempt < max_retries - 1:
-            time.sleep(1.5 * (attempt + 1))
-
+    if SCRAPER_KEY:
+        try:
+            PROXY_REQUEST_COUNT += 1
+            proxy = f"https://api.scraperapi.com?api_key={SCRAPER_KEY}&url={quote(target_url)}&country_code=kr"
+            res = session.get(proxy, timeout=25)
+            if valid_response(res):
+                return res
+        except requests.RequestException:
+            pass
     raise RuntimeError(f"HTML 요청 최종 실패: {target_url}")
 
-def get_next_week_seldate(soup_main, now_kst):
-    for a in soup_main.find_all("a", href=True):
-        href = a["href"]
-        if "selDate=" in href and any(img for img in a.find_all("img") if "nextweek" in img.get("src", "")):
-            m = re.search(r"selDate=([\d\-]+)", href)
-            if m:
-                return m.group(1)
-    days_ahead = 7 - now_kst.weekday()
-    next_monday = now_kst + timedelta(days=days_ahead)
-    return next_monday.strftime("%Y-%m-%d")
 
 def extract_days(soup):
     for tbl in soup.find_all("table"):
@@ -168,6 +146,7 @@ def parse_cell(td_el):
             cell_time = "17:00~19:00"
 
     items = []
+    item_parts = {}
     curr_tokens = []
 
     for line in raw_lines:
@@ -186,6 +165,10 @@ def parse_cell(td_el):
             menu_combined = re.sub(r"^(특식|정식)\s*", "", menu_combined).strip()
             if menu_combined:
                 items.append(menu_combined)
+                parts = [price_pattern.sub("", token).strip() for token in curr_tokens]
+                parts = [part for part in parts if part]
+                if len(parts) > 1:
+                    item_parts[menu_combined] = parts
             curr_tokens = []
 
     if curr_tokens:
@@ -197,10 +180,11 @@ def parse_cell(td_el):
     return [{
         "meal": meal,
         "time": cell_time,
-        "items": items
+        "items": items,
+        "item_parts": item_parts
     }]
 
-def crawl_menus(target_shops, sel_date=None):
+def crawl_menus(target_shops, sel_date=None, prefetched=None):
     all_shops_data = {}
     all_days = []
     total_items_count = 0
@@ -213,7 +197,11 @@ def crawl_menus(target_shops, sel_date=None):
 
         time.sleep(0.8)
         try:
-            res = fetch_html(url)
+            res = (prefetched or {}).get(url)
+            if isinstance(res, Exception):
+                raise res
+            if res is None:
+                res = fetch_html(url)
             res.encoding = "utf-8"
             soup = BeautifulSoup(res.text, "html.parser")
 
@@ -261,6 +249,8 @@ def crawl_menus(target_shops, sel_date=None):
                                 for itm in res_item["items"]:
                                     if itm not in weekly[day_key][target_meal]["items"]:
                                         weekly[day_key][target_meal]["items"].append(itm)
+                                        if itm in res_item["item_parts"]:
+                                            weekly[day_key][target_meal].setdefault("item_parts", {})[itm] = res_item["item_parts"][itm]
                                         total_items_count += 1
                                         shop_items_count += 1
 
@@ -349,9 +339,25 @@ def build_result(old, shops, data, target, now, notice="", next_week=False):
     return result
 
 
-def main():
-    kst = timezone(timedelta(hours=9))
-    now_kst = datetime.now(kst)
+def missing_meals(weekly, previous, target):
+    """Require a weekday menu and retain previously published meals for the same date."""
+    day = f"{'월화수목금토일'[target.weekday()]}({target:%m/%d})"
+    def at_date(data):
+        return next((meals for key, meals in data.items()
+                     if isinstance(meals, dict) and re.sub(r"\s", "", key) == day), {})
+    current, prior = at_date(weekly), at_date(previous)
+    missing = {meal for meal, value in prior.items() if value.get("items")
+               and not current.get(meal, {}).get("items")}
+    if target.weekday() < 5 and not any(value.get("items") for value in current.values()):
+        missing.add("오늘 식단")
+    return missing
+
+
+def main(slot=None):
+    global DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT
+    DIRECT_REQUEST_COUNT = PROXY_REQUEST_COUNT = 0
+    now_kst = datetime.now(timezone(timedelta(hours=9)))
+    run_date = now_kst.date().isoformat()
     old_data = {}
     if os.path.exists(JSON_PATH):
         try:
@@ -360,59 +366,82 @@ def main():
         except (OSError, ValueError) as e:
             print(f'[오류] 기존 식단을 읽을 수 없어 덮어쓰지 않습니다: {e}')
             return 1
-    is_sunday = (now_kst.weekday() == 6)
 
-    print(f"[실행 시각] {now_kst.strftime('%Y-%m-%d %H:%M:%S')} (일요일 여부: {is_sunday})")
+    state = old_data.get("collection", {})
+    same_day = state.get("date") == run_date
+    retry = slot is not None and slot > 0 and same_day
+    if slot is not None and same_day and (slot <= state.get("slot", -1) or not state.get("pending")):
+        print("[수집 생략] 이미 처리한 회차 또는 재시도할 식당 없음")
+        return 0
 
-    shops = {}
-    next_week_date = None
-    try:
-        res_main = fetch_html(f"{BASE_URL}?shop_sqno=35")
-        res_main.encoding = "utf-8"
-        soup_main = BeautifulSoup(res_main.text, "html.parser")
+    next_week = now_kst.weekday() == 6
+    target = now_kst + timedelta(days=1) if next_week else now_kst
+    shops = dict(DEFAULT_SHOPS)
+    prefetched = {}
+    if retry:
+        shops.update(state.get("shop_ids", {}))
+    elif not next_week:
+        url = f"{BASE_URL}?shop_sqno=35"
+        try:
+            response = fetch_html(url)
+            prefetched[url] = response
+            soup = BeautifulSoup(response.text, "html.parser")
+            discovered = {}
+            for link in soup.find_all("a", href=True):
+                match = re.search(r"shop_sqno=(\d+)", link["href"])
+                name = link.get_text(strip=True)
+                if match and name and "ENGLISH" not in name:
+                    discovered[match.group(1)] = name
+            # Keep known IDs if the navigation itself is incomplete.
+            by_id = {shop_id: shop for shop, shop_id in shops.items()}
+            by_id.update(discovered)
+            shops = {shop: shop_id for shop_id, shop in by_id.items()}
+        except RuntimeError as e:
+            prefetched[url] = e  # don't pay again for the same failed lookup
+            print("[수집] 식당 목록 조회 실패: 기본 식당 목록 사용")
 
-        for a in soup_main.find_all("a", href=True):
-            href = a["href"]
-            if "shop_sqno=" in href:
-                m = re.search(r"shop_sqno=(\d+)", href)
-                if m:
-                    name = a.get_text().strip()
-                    if name and "ENGLISH" not in name and name not in shops:
-                        shops[name] = m.group(1)
-
-        if is_sunday:
-            next_week_date = get_next_week_seldate(soup_main, now_kst)
-            print(f"[일요일 감지] 다음 주 식단 selDate 타깃: {next_week_date}")
-    except Exception as e:
-        print(f"[경고] 메인 페이지 조회 실패: {e}")
-
-    if not shops:
-        print("[알림] 기본 식당 ID 맵으로 대체 진행합니다.")
-        shops = DEFAULT_SHOPS
-
-    notice_message = ""
-    is_next_week_loaded = False
-
-    if is_sunday and next_week_date:
-        print(f"[시도] 일요일이므로 다음 주 식단 수집을 먼저 시도합니다 (selDate={next_week_date})...")
-        days, data, sc_count, item_count = crawl_menus(shops, sel_date=next_week_date)
-
-        next_target = now_kst + timedelta(days=1)
-        if sc_count >= 2 and item_count >= 10 and valid_week(days, next_target):
-            print(f"[성공] 다음 주 식단이 정상 등록되어 있습니다 (총 메뉴 {item_count}개).")
-            all_days, all_shops_data = days, data
-            is_next_week_loaded = True
-        else:
-            print(f"[미등록 감지] 다음 주 식단이 아직 등록되지 않았거나 비어있습니다 (메뉴 {item_count}개).")
-            notice_message = "다음 주 식단이 아직 등록되지 않아 지난 식단 정보를 유지합니다."
-            print("[폴백] 이전 식단(현재 기본 페이지)을 수집합니다...")
-            all_days, all_shops_data, sc_count, _ = crawl_menus(shops, sel_date=None)
+    requested = {shop: shop_id for shop, shop_id in shops.items()
+                 if not retry or shop in state["pending"]}
+    _, data, _, _ = crawl_menus(requested, sel_date=f"{target:%Y-%m-%d}" if next_week else None,
+                                prefetched=prefetched)
+    carried = old_data.get("data", {})
+    failed = {}
+    for shop, weekly in data.items():
+        if valid_week(list(weekly), target):
+            missing = missing_meals(weekly, carried.get(shop, {}), target)
+            if missing:
+                failed[shop] = sorted(missing)
+    reused = {shop: carried[shop] for shop in shops if shop not in requested and shop in carried}
+    result = build_result(old_data, shops, {**reused, **data}, target, now_kst, next_week=next_week)
+    for shop in reused:
+        result["shop_status"][shop] = old_data["shop_status"][shop]
+    for shop, missing in failed.items():
+        status = result["shop_status"][shop]
+        if status["status"] != "success":
+            continue
+        day = f"{'월화수목금토일'[target.weekday()]}({target:%m/%d})"
+        previous_day = next((value for key, value in carried.get(shop, {}).items()
+                             if re.sub(r"\s", "", key) == day), {})
+        current_day = next((key for key in data[shop] if re.sub(r"\s", "", key) == day), day)
+        for meal in missing:
+            if meal in previous_day:
+                result["data"][shop].setdefault(current_day, {})[meal] = previous_day[meal]
+        status.update(status="partial", missing=missing,
+                      last_success=old_data.get("shop_status", {}).get(shop, {}).get("last_success"))
+    pending = [shop for shop, info in result["shop_status"].items() if info["status"] != "success"]
+    if pending and result["crawl_status"] == "success":
+        result["crawl_status"] = "partial"
+    if result["crawl_status"] == "partial":
+        result["updated_at"] = (now_kst.strftime("%Y-%m-%d %H:%M:%S")
+                                if result["data"] != carried else old_data.get("updated_at"))
+    if not retry:
+        attempts = 0
     else:
-        all_days, all_shops_data, sc_count, _ = crawl_menus(shops, sel_date=None)
-
-    target = now_kst + timedelta(days=1) if is_next_week_loaded else now_kst
-    result = build_result(old_data, shops, all_shops_data, target, now_kst,
-                          notice_message, is_next_week_loaded)
+        attempts = state.get("proxy_requests", 0)
+    result["collection"] = dict(date=run_date, slot=slot if slot is not None else state.get("slot", -1) if same_day else -1,
+                                pending=pending, shop_ids=shops,
+                                proxy_requests=attempts + PROXY_REQUEST_COUNT)
+    print(f"[요청] 직접 {DIRECT_REQUEST_COUNT}회 / 프록시 {PROXY_REQUEST_COUNT}회")
     try:
         atomic_save(result)
     except (OSError, ValueError, TypeError) as e:
@@ -422,4 +451,7 @@ def main():
     return 0 if result['crawl_status'] == 'success' else 1
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--slot", type=int, choices=range(4))
+    sys.exit(main(parser.parse_args().slot))

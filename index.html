@@ -180,42 +180,22 @@
       color: var(--text-muted);
       padding-left: 0.2rem;
     }
-    .shop-scroll-group {
-      display: flex;
-      gap: 0.4rem;
-      overflow-x: auto;
-      padding-bottom: 0.2rem;
-      scrollbar-width: none;
-      -webkit-overflow-scrolling: touch;
+    .shop-select {
+      width: 100%; min-width: 0; padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border); border-radius: 0.65rem;
+      background: var(--card-bg); color: var(--text); font: inherit;
     }
-    .shop-scroll-group::-webkit-scrollbar {
-      display: none;
-    }
-    .shop-chip {
-      background: var(--card-bg);
-      border: 1px solid var(--border-dark);
-      border-radius: 20px;
-      padding: 0.35rem 0.85rem;
-      font-size: 0.82rem;
-      font-weight: 500;
-      color: var(--text);
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.18s ease;
-      flex-shrink: 0;
-    }
-    .shop-chip:hover {
-      border-color: var(--primary);
-    }
-    .shop-chip.active {
-      background: #343a40;
-      color: #ffffff;
-      border-color: #343a40;
-    }
+    .meal-more { margin-top: 0.45rem; }
+    .meal-more summary { color: var(--primary); cursor: pointer; padding: 0.4rem 0; }
+    .item-lead, .item-sides { display: block; }
+    .item-sides { font-size: 0.84rem; color: var(--text-muted); margin-top: 0.15rem; }
+    .empty-summary { grid-column: 1 / -1; padding: 0.8rem; color: var(--text-muted); }
+    .empty-summary summary { cursor: pointer; }
+    .empty-summary ul { margin: 0.5rem 0 0 1.25rem; }
 
     .menu-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
       gap: 1.1rem;
     }
     .shop-card {
@@ -414,8 +394,8 @@
     </div>
 
     <div class="filter-section">
-      <div class="filter-label">식당 필터</div>
-      <div id="shopSelector" class="shop-scroll-group"></div>
+      <label class="filter-label" for="shopSelector">식당 선택</label>
+      <select id="shopSelector" class="shop-select" aria-label="식당 선택"></select>
     </div>
   </div>
 
@@ -437,7 +417,7 @@
   </footer>
 
   <script src="./meal-config.js"></script>
-  <script src="./meal-status.js?v=20261023-1"></script>
+  <script src="./meal-status.js?v=20261109-1"></script>
   <script>
     let rawData = null;
     let selectedDay = "";
@@ -475,25 +455,21 @@
 
       if (!days || days.length === 0) return;
 
-      const todayIdx = new Date().getDay();
-      const dayMap = ["일", "월", "화", "수", "목", "금", "토"];
-      const currentDayChar = dayMap[todayIdx];
-
       let targetIdx = days.findIndex(d => d.replace(/\s/g, "") === currentMenuDay());
       if (targetIdx === -1) targetIdx = 0;
 
       selectedDay = days[targetIdx];
 
       days.forEach((dayStr, idx) => {
-        const m = dayStr.match(/([월화수목금토])\((.*?)\)/);
+        const m = dayStr.match(/([월화수목금토일])\((.*?)\)/);
         const dayName = m ? m[1] : dayStr;
         const dayDate = m ? m[2] : "";
 
         const btn = document.createElement("button");
         btn.className = `day-btn ${idx === targetIdx ? "active" : ""}`;
         btn.innerHTML = `
-          <span class="day-name">${dayName}</span>
-          ${dayDate ? `<span class="day-date">${dayDate}</span>` : ""}
+          <span class="day-name">${escapeText(dayName)}</span>
+          ${dayDate ? `<span class="day-date">${escapeText(dayDate)}</span>` : ""}
         `;
 
         btn.onclick = () => {
@@ -518,53 +494,36 @@
     }
 
     function setupShops(shops) {
-      const container = document.getElementById("shopSelector");
-      container.innerHTML = "";
-
-      const allBtn = document.createElement("button");
-      allBtn.className = "shop-chip active";
-      allBtn.textContent = "전체 식당";
-      allBtn.onclick = () => {
-        document.querySelectorAll("#shopSelector .shop-chip").forEach(b => b.classList.remove("active"));
-        allBtn.classList.add("active");
-        selectedShop = "ALL";
+      const select = document.getElementById("shopSelector");
+      select.replaceChildren(new Option("전체 식당", "ALL"),
+        ...shops.map(shop => new Option(shop, shop)));
+      select.onchange = () => {
+        selectedShop = select.value;
         render();
       };
-      container.appendChild(allBtn);
-
-      if (!shops) return;
-
-      shops.forEach(shop => {
-        const btn = document.createElement("button");
-        btn.className = "shop-chip";
-        btn.textContent = shop;
-        btn.onclick = () => {
-          document.querySelectorAll("#shopSelector .shop-chip").forEach(b => b.classList.remove("active"));
-          btn.classList.add("active");
-          selectedShop = shop;
-          render();
-        };
-        container.appendChild(btn);
-      });
     }
 
-    function formatMenuItem(rawItem) {
-      const priceMatch = rawItem.match(/^(.*?)(￦\s*[\d,]+|[\d,]+\s*원)$/);
-      if (priceMatch) {
-        const name = priceMatch[1].trim();
-        const price = priceMatch[2].trim();
-        return `
-          <li class="meal-item">
-            <span class="item-name">${name}</span>
-            <span class="item-price">${price}</span>
-          </li>
-        `;
-      }
-      return `
-        <li class="meal-item">
-          <span class="item-name">${rawItem}</span>
-        </li>
-      `;
+    const escapeText = value => String(value).replace(/[&<>"']/g, char =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+
+    function formatMenuItem(rawItem, parts) {
+      const match = rawItem.match(/^(.*?)([￦₩]\s*[\d,]+|[\d,]+\s*원)$/);
+      const name = match ? match[1].trim() : rawItem;
+      const [lead, ...sides] = parts || [];
+      const menu = lead && sides.length
+        ? `<strong class="item-lead">${escapeText(lead)}</strong><span class="item-sides">${sides.map(escapeText).join(" · ")}</span>`
+        : escapeText(name);
+      return `<li class="meal-item"><span class="item-name">${menu}</span>
+        ${match ? `<span class="item-price">${escapeText(match[2].trim())}</span>` : ""}</li>`;
+    }
+
+    function renderMenuItems(mealInfo) {
+      const items = mealInfo.items.map(item => formatMenuItem(item, mealInfo.item_parts?.[item]));
+      const visible = selectedShop === "ALL" ? 3 : items.length;
+      const hidden = items.slice(visible);
+      return `<ul class="meal-items">${items.slice(0, visible).join("")}</ul>
+        ${hidden.length ? `<details class="meal-more"><summary>메뉴 ${hidden.length}개 더 보기</summary>
+          <ul class="meal-items">${hidden.join("")}</ul></details>` : ""}`;
     }
 
     function render() {
@@ -577,6 +536,7 @@
       }
 
       let renderedAny = false;
+      const missing = [];
       const targetShops = (selectedShop === "ALL") ? rawData.shops : [selectedShop];
 
       sortedShopsForMenu(targetShops, rawData.data, selectedDay, selectedMeal).forEach(shop => {
@@ -596,7 +556,7 @@
             hasAnyItem = true;
 
             const timeBadge = mealInfo.time
-              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG} ${mealInfo.time}</span>`
+              ? `<span class="meal-time-badge">${CLOCK_ICON_SVG} ${escapeText(mealInfo.time)}</span>`
               : "";
 
             mealBlocksHtml += `
@@ -605,32 +565,41 @@
                   <span class="meal-badge">${mType}</span>
                   ${timeBadge}
                 </div>
-                <ul class="meal-items">
-                  ${mealInfo.items.map(formatMenuItem).join("")}
-                </ul>
+                ${renderMenuItems(mealInfo)}
               </div>
             `;
           }
         });
 
+        const status = rawData.shop_status?.[shop]?.status;
+        const incomplete = status === "failed" || status === "partial";
+        const emptyMessage = status === "failed" ? "수집 실패로 식단을 확인하지 못했습니다."
+          : status === "partial" ? "일부 식단을 아직 확인하지 못했습니다."
+          : "이 날짜·끼니의 식단 정보가 없습니다.";
+        if (!hasAnyItem && selectedShop === "ALL") {
+          missing.push(`<li>${escapeText(shop)} — ${emptyMessage}</li>`);
+          return;
+        }
         renderedAny = true;
         const card = document.createElement("div");
         card.className = "shop-card";
         card.innerHTML = `
           <div class="shop-header">
-            <span class="shop-name">${shop}</span>
+            <span class="shop-name">${escapeText(shop)}</span>
           </div>
-          ${hasAnyItem ? mealBlocksHtml : '<p class="empty-menu">식단 정보가 없습니다.</p>'}
+          ${incomplete && hasAnyItem ? '<p class="item-sides">일부 정보는 이전 식단일 수 있습니다.</p>' : ""}
+          ${hasAnyItem ? mealBlocksHtml : `<p class="empty-menu">${emptyMessage}</p>`}
         `;
         container.appendChild(card);
       });
 
       if (!renderedAny) {
-        container.innerHTML = `
-          <div class="no-data">
-            선택한 조건 (${selectedDay}${selectedMeal !== "ALL" ? " / " + selectedMeal : ""}${selectedShop !== "ALL" ? " / " + selectedShop : ""})에 등록된 식단 정보가 없습니다.
-          </div>
-        `;
+        container.innerHTML = '<div class="no-data">선택한 날짜·끼니의 식단 정보가 없습니다.</div>';
+      }
+      if (missing.length) {
+        container.insertAdjacentHTML("beforeend", `<details class="empty-summary">
+          <summary>표시할 식단이 없는 식당 ${missing.length}곳</summary>
+          <ul>${missing.join("")}</ul></details>`);
       }
     }
 
