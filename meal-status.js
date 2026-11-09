@@ -15,8 +15,19 @@ function currentMenuDay(now = new Date()) {
 }
 
 function showMenuStatus(data) {
-  document.getElementById('updatedAt').textContent =
-    `식단 갱신: ${data.updated_at || '정보 없음'} · 최근 점검: ${data.last_checked || '정보 없음'}`;
+  const now = new Date();
+  const todayKst = new Date(now.getTime() + 9 * 3600000).toISOString().slice(0, 10);
+  const checked = data.last_checked || '';
+  const messages = menuStatusMessages(data, now);
+  const confirmed = data.crawl_status === 'success' && checked.startsWith(todayKst) && !messages.length;
+  const status = document.getElementById('updatedAt');
+  status.textContent = confirmed ? `오늘 식단 확인 완료 · ${checked.slice(11, 16)}`
+    : `최근 확인: ${checked.slice(0, 16) || '정보 없음'}`;
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = '식단 갱신 정보';
+  details.append(summary, `내용 갱신: ${data.updated_at || '정보 없음'} · 최근 점검: ${checked || '정보 없음'} (한국 시간)`);
+  status.appendChild(details);
   let banner = document.getElementById('noticeBanner');
   if (!banner) {
     banner = document.createElement('div');
@@ -25,7 +36,6 @@ function showMenuStatus(data) {
     banner.style.cssText = 'padding:12px;margin:12px 0;background:#fff3cd;color:#664d03;border-radius:8px;';
     document.querySelector('header').after(banner);
   }
-  const messages = menuStatusMessages(data);
   const target = document.getElementById('noticeText') || banner;
   target.textContent = messages.join(' ');
   banner.style.display = messages.length ? 'block' : 'none';
@@ -35,8 +45,8 @@ function menuStatusMessages(data, now = new Date()) {
   const parseStamp = value => value ? Date.parse(value.replace(' ', 'T') + '+09:00') : NaN;
   const messages = [];
   if (data.crawl_status === 'failed') messages.push('식단 수집에 실패하여 이전 식단을 표시합니다.');
-  if (data.crawl_status === 'partial') messages.push('일부 식당 수집에 실패했습니다. 해당 식당은 이전 식단을 표시합니다.');
-  const failed = Object.entries(data.shop_status || {}).filter(([, info]) => info.status === 'failed').map(([shop]) => shop);
+  if (data.crawl_status === 'partial') messages.push('일부 식당의 식단을 확인하지 못했습니다. 이전 식단이 포함될 수 있습니다.');
+  const failed = Object.entries(data.shop_status || {}).filter(([, info]) => ['failed', 'partial'].includes(info.status)).map(([shop]) => shop);
   if (failed.length) messages.push(`확인 필요 식당: ${failed.join(', ')}`);
   const checked = parseStamp(data.last_checked);
   if (!Number.isFinite(checked) || checked > now.getTime() || now.getTime() - checked > 30 * 3600000) {

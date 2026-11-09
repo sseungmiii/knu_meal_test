@@ -15,7 +15,6 @@ def response(text, status=200):
 
 class CrawlerTests(unittest.TestCase):
     def setUp(self):
-        crawler.DIRECT_BLOCKED = False
         crawler.PROXY_REQUEST_COUNT = 0
         crawler.DIRECT_REQUEST_COUNT = 0
 
@@ -24,6 +23,21 @@ class CrawlerTests(unittest.TestCase):
             result = crawler.fetch_html('https://example.invalid')
         self.assertEqual(result.text, VALID)
         self.assertEqual(crawler.PROXY_REQUEST_COUNT, 1)
+
+    def test_invalid_proxy_is_not_repeated(self):
+        with patch.object(crawler, 'SCRAPER_KEY', 'test-key'), patch.object(
+            crawler.session, 'get', side_effect=[response('blocked', 403), response('empty')]
+        ) as get:
+            with self.assertRaises(RuntimeError):
+                crawler.fetch_html('https://example.invalid')
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(crawler.PROXY_REQUEST_COUNT, 1)
+
+    def test_source_menu_lines_preserve_original_items(self):
+        cell = crawler.BeautifulSoup('<td>닭갈비<br>흰밥<br>김치<br>6,000원</td>', 'html.parser').td
+        meal = crawler.parse_cell(cell)[0]
+        self.assertEqual(meal['items'], ['닭갈비 흰밥 김치 6,000원'])
+        self.assertEqual(meal['item_parts'][meal['items'][0]], ['닭갈비', '흰밥', '김치'])
 
     def test_empty_table_and_http_error_rejected(self):
         self.assertFalse(crawler.valid_response(response('<table><tr><th>월(10/05)</th></tr></table>')))
@@ -118,6 +132,35 @@ class DataIntegrityTests(unittest.TestCase):
                 clock.now.return_value = self.now
                 self.assertEqual(crawler.main(), 1)
             self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['crawl_status'], 'partial')
+
+    def test_scheduled_retries_only_request_pending_and_stop_after_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'menu.json'
+            incomplete = {'목(10/22)': self.weekly['금(10/23)']}
+            with patch.object(crawler, 'JSON_PATH', str(path)), patch.object(
+                crawler, 'DEFAULT_SHOPS', {'A': '35', 'B': '36'}
+            ), patch.object(crawler, 'datetime') as clock, patch.object(
+                crawler, 'fetch_html', return_value=response(VALID)
+            ) as fetch, patch.object(crawler, 'crawl_menus') as crawl:
+                clock.now.return_value = self.now.replace(hour=6)
+                crawl.return_value = ([], {'A': self.weekly, 'B': incomplete}, 2, 2)
+                self.assertEqual(crawler.main(0), 1)
+                self.assertEqual(json.loads(path.read_text(encoding='utf8'))['collection']['pending'], ['B'])
+                clock.now.return_value = self.now.replace(hour=7)
+                crawl.return_value = ([], {'B': self.weekly}, 1, 1)
+                self.assertEqual(crawler.main(1), 0)
+                self.assertEqual(crawl.call_args.args[0], {'B': '36'})
+                self.assertEqual(crawler.main(2), 0)
+                self.assertEqual(crawl.call_count, 2)
+                fetch.assert_called_once()
+                saved = json.loads(path.read_text(encoding='utf8'))
+                self.assertEqual(saved['shop_status']['A']['last_checked'], '2026-10-23 06:00:00')
+                self.assertEqual(saved['collection']['pending'], [])
+
+    def test_missing_same_date_meal_is_not_dropped(self):
+        old = {'금(10/23)': {**self.weekly['금(10/23)'], '석식': {'items': ['저녁']}}}
+        self.assertEqual(crawler.missing_meals(self.weekly, old, self.now), {'석식'})
+        self.assertEqual(crawler.missing_meals({}, {}, self.now.replace(day=24)), set())
 
     def test_save_error_returns_nonzero(self):
         with tempfile.TemporaryDirectory() as directory:

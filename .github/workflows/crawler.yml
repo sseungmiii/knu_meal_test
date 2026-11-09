@@ -2,7 +2,11 @@ name: Meal validation and daily collection
 on:
   workflow_dispatch:
   schedule:
-    - cron: '23 21 * * *'
+    # KST 02:47 primary, then 03:47 / 04:47 / 05:47 if incomplete.
+    - cron: '47 17 * * *'
+    - cron: '47 18 * * *'
+    - cron: '47 19 * * *'
+    - cron: '47 20 * * *'
   push:
     branches: [main]
     paths:
@@ -25,6 +29,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,7 +47,10 @@ jobs:
       - run: node --test tests/test_data_contract.cjs
   collect:
     needs: validate
-    if: github.event_name != 'pull_request'
+    if: >-
+      ${{ !cancelled() && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && needs.validate.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -60,7 +68,16 @@ jobs:
         continue-on-error: true
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
-        run: python get_menu.py
+          SCHEDULE_SLOT: ${{ github.event.schedule }}
+        run: |
+          case "$SCHEDULE_SLOT" in
+            "47 17 * * *") python get_menu.py --slot 0 ;;
+            "47 18 * * *") python get_menu.py --slot 1 ;;
+            "47 19 * * *") python get_menu.py --slot 2 ;;
+            "47 20 * * *") python get_menu.py --slot 3 ;;
+            "") python get_menu.py ;;
+            *) exit 1 ;;
+          esac
       - name: Save meal data or failure status
         run: |
           git config user.name "github-actions[bot]"
