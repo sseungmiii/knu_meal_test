@@ -1,6 +1,6 @@
 {
   "updated_at": "2026-11-16 09:22:39",
-  "last_checked": "2026-11-18 08:57:47",
+  "last_checked": "2026-11-19 08:36:14",
   "crawl_status": "success",
   "notice": "",
   "is_next_week": false,
@@ -1081,37 +1081,37 @@
   "shop_status": {
     "정보센터식당": {
       "status": "success",
-      "last_checked": "2026-11-18 08:57:47",
-      "last_success": "2026-11-18 08:57:47"
+      "last_checked": "2026-11-19 08:36:14",
+      "last_success": "2026-11-19 08:36:14"
     },
     "복지관 교직원식당": {
       "status": "success",
-      "last_checked": "2026-11-18 08:57:47",
-      "last_success": "2026-11-18 08:57:47"
+      "last_checked": "2026-11-19 08:36:14",
+      "last_success": "2026-11-19 08:36:14"
     },
     "카페테리아 첨성": {
       "status": "success",
-      "last_checked": "2026-11-18 08:57:47",
-      "last_success": "2026-11-18 08:57:47"
+      "last_checked": "2026-11-19 08:36:14",
+      "last_success": "2026-11-19 08:36:14"
     },
     "GP감꽃식당": {
       "status": "success",
-      "last_checked": "2026-11-18 08:57:47",
-      "last_success": "2026-11-18 08:57:47"
+      "last_checked": "2026-11-19 08:36:14",
+      "last_success": "2026-11-19 08:36:14"
     },
     "공학관교직원식당(외부업체)": {
       "status": "success",
-      "last_checked": "2026-11-18 08:57:47",
-      "last_success": "2026-11-18 08:57:47"
+      "last_checked": "2026-11-19 08:36:14",
+      "last_success": "2026-11-19 08:36:14"
     },
     "공학관학생식당(외부업체)": {
       "status": "success",
-      "last_checked": "2026-11-18 08:57:47",
-      "last_success": "2026-11-18 08:57:47"
+      "last_checked": "2026-11-19 08:36:14",
+      "last_success": "2026-11-19 08:36:14"
     }
   },
   "collection": {
-    "date": "2026-11-18",
+    "date": "2026-11-19",
     "slot": 0,
     "pending": [],
     "shop_ids": {
