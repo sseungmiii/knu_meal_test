@@ -8,7 +8,7 @@ on:
     - cron: '47 19 * * *'
     - cron: '47 20 * * *'
   push:
-    branches: [main]
+    branches: [main, codex/meal-retry-20261125]
     paths:
       - get_menu.py
       - index.html
@@ -48,8 +48,9 @@ jobs:
   collect:
     needs: validate
     if: >-
-      ${{ !cancelled() && github.ref == 'refs/heads/main' &&
+      ${{ !cancelled() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/meal-retry-20261125') &&
       (github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/codex/meal-retry-20261125' && needs.validate.result == 'success') ||
       (github.event_name == 'workflow_dispatch' && needs.validate.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
