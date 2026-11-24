@@ -79,6 +79,29 @@ class CrawlerTests(unittest.TestCase):
         self.assertEqual((successes, items), (1, 1))
         self.assertEqual(data['shop'][days[0]]['중식']['items'], ['비빔밥 5,000원'])
 
+    def test_official_table_captions_keep_lunch_and_dinner_separate(self):
+        html = """
+        <table class="tstyle_me"><caption>주간메뉴</caption>
+          <thead><tr><th>수 (11/25)</th></tr></thead></table>
+        <table class="tstyle_me"><caption>중식</caption>
+          <tbody><tr><td><ul class="menu_im">
+            <li>파스타<br>(11:00~13:<p>￦ 7,000</p></li>
+            <li>라면<br>(13:00~17:00)<p>￦ 2,800</p></li>
+          </ul></td></tr></tbody></table>
+        <table class="tstyle_me"><caption>석식</caption>
+          <tbody><tr><td><ul class="menu_im">
+            <li>닭갈비<br>(17:00~19:00)<p>￦ 6,000</p></li>
+          </ul></td></tr></tbody></table>
+        """
+        with patch.object(crawler, 'fetch_html', return_value=response(html)), patch.object(crawler.time, 'sleep'):
+            days, data, successes, _ = crawler.crawl_menus({'shop': '35'})
+        self.assertEqual(successes, 1)
+        day = data['shop'][days[0]]
+        self.assertEqual(day['중식']['items'], ['파스타 ￦ 7,000', '라면 ￦ 2,800'])
+        self.assertEqual(day['중식']['time'], '')
+        self.assertEqual(day['석식']['items'], ['닭갈비 ￦ 6,000'])
+        self.assertEqual(day['석식']['time'], '17:00~19:00')
+
     def test_headers_alone_do_not_count_as_success(self):
         with patch.object(crawler, 'fetch_html', return_value=response('<table><tr><th>월(10/05)</th></tr></table>')), patch.object(crawler.time, 'sleep'):
             _, _, successes, items = crawler.crawl_menus({'shop': '35'})
