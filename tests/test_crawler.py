@@ -16,12 +16,24 @@ def response(text, status=200):
 class CrawlerTests(unittest.TestCase):
     def setUp(self):
         crawler.PROXY_REQUEST_COUNT = 0
+        crawler.PROXY_STOP_REASON = None
         crawler.DIRECT_REQUEST_COUNT = 0
 
     def test_http_200_without_menu_uses_proxy(self):
         with patch.object(crawler, 'SCRAPER_KEY', 'secret'), patch.object(crawler.session, 'get', side_effect=[response('Access denied' * 100), response(VALID)]):
             result = crawler.fetch_html('https://example.invalid')
         self.assertEqual(result.text, VALID)
+        self.assertEqual(crawler.PROXY_REQUEST_COUNT, 1)
+
+    def test_proxy_rejection_skips_remaining_proxy_calls_but_allows_direct(self):
+        with patch.object(crawler, 'SCRAPER_KEY', 'test-key'), patch.object(
+            crawler.session, 'get', side_effect=[response('blocked', 403),
+                                                response('rejected', 429), response(VALID)]
+        ) as get:
+            with self.assertRaisesRegex(RuntimeError, 'direct=http_403, proxy=http_429'):
+                crawler.fetch_html('https://example.invalid/1')
+            self.assertEqual(crawler.fetch_html('https://example.invalid/2').text, VALID)
+        self.assertEqual(get.call_count, 3)
         self.assertEqual(crawler.PROXY_REQUEST_COUNT, 1)
 
     def test_invalid_proxy_is_not_repeated(self):

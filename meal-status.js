@@ -44,7 +44,7 @@ function showMenuStatus(data) {
 function menuStatusMessages(data, now = new Date()) {
   const parseStamp = value => value ? Date.parse(value.replace(' ', 'T') + '+09:00') : NaN;
   const messages = [];
-  if (data.crawl_status === 'failed') messages.push('식단 수집에 실패하여 이전 식단을 표시합니다.');
+  if (data.crawl_status === 'failed') messages.push('식단 원본을 확인하지 못했습니다. 저장된 식단은 표시 날짜를 확인해주세요.');
   if (data.crawl_status === 'partial') messages.push('일부 식당의 식단을 확인하지 못했습니다. 이전 식단이 포함될 수 있습니다.');
   const failed = Object.entries(data.shop_status || {}).filter(([, info]) => ['failed', 'partial'].includes(info.status)).map(([shop]) => shop);
   if (failed.length) messages.push(`확인 필요 식당: ${failed.join(', ')}`);
@@ -68,6 +68,6 @@ function menuStatusMessages(data, now = new Date()) {
     });
     if (missing.length) messages.push(`오늘 식단 미등록: ${missing.join(', ')}. 휴무 여부를 확인해주세요.`);
   }
-  if (data.notice && !messages.includes(data.notice)) messages.push(data.notice);
+  if (data.notice && data.crawl_status !== 'failed' && !messages.includes(data.notice)) messages.push(data.notice);
   return messages;
 }
