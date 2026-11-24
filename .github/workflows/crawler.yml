@@ -1,4 +1,4 @@
-name: Diagnose an existing proxy rejection
+name: Check proxy credit availability
 on:
   push:
     branches: [codex/meal-retry-20261125]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  account:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -14,34 +14,25 @@ jobs:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: |
           python - <<'PY'
+          import json
           import os
-          import re
           from urllib.error import HTTPError, URLError
           from urllib.parse import urlencode
           from urllib.request import urlopen
-          key = os.environ.get('SCRAPER_API_KEY', '').strip()
+          key = os.environ.get("SCRAPER_API_KEY", "").strip()
           if not key:
-              print('Proxy configuration missing')
+              print("ACCOUNT_RESULT missing-config")
               raise SystemExit(0)
-          query = urlencode({'api_key': key, 'country_code': 'kr',
-                             'url': 'https://coop.knu.ac.kr/sub03/sub01_01.html?shop_sqno=35'})
           try:
-              response = urlopen('https://api.scraperapi.com?' + query, timeout=25)
+              with urlopen("https://api.scraperapi.com/account?" + urlencode({"api_key": key}), timeout=15) as response:
+                  account = json.load(response)
+              used, limit = account.get("requestCount"), account.get("requestLimit")
+              if type(used) in (int, float) and type(limit) in (int, float):
+                  print("ACCOUNT_RESULT", "credits-exhausted" if used >= limit else "credits-remaining")
+              else:
+                  print("ACCOUNT_RESULT credit-fields-unavailable")
           except HTTPError as error:
-              response = error
-          except URLError as error:
-              print('Proxy network error:', type(error.reason).__name__)
-              raise SystemExit(0)
-          with response:
-              body = response.read(100000).decode('utf-8', 'replace').casefold()
-              print('PROXY_STATUS', response.status)
-              clues = {
-                  'origin-hosting-denial': r'gabia|요청한 페이지에 접근 권한',
-                  'geo-restriction': r'(geo.?target|country.code|country).{0,100}(plan|not support|only)|(plan|only).{0,100}(geo.?target|country.code)',
-                  'key-error': r'(invalid|incorrect|missing).{0,30}(api key|apikey|api_key)',
-                  'quota-error': r'out of credits|quota exceeded|credits.{0,20}(exhausted|insufficient)|insufficient credits',
-                  'blocked-destination': r'(domain|url|target).{0,45}(not allowed|blocked|not permitted|restricted)',
-                  'menu-table': r'week_t|tstyle_me',
-              }
-              print('PROXY_CLUES', [label for label, pattern in clues.items() if re.search(pattern, body)])
+              print("ACCOUNT_RESULT http", error.code)
+          except (URLError, OSError, ValueError):
+              print("ACCOUNT_RESULT unavailable")
           PY
