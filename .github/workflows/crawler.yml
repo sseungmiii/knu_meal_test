@@ -1,100 +1,71 @@
-name: Meal validation and daily collection
+name: Inspect public meal source
 on:
-  workflow_dispatch:
-  schedule:
-    # KST 02:47 primary, then 03:47 / 04:47 / 05:47 if incomplete.
-    - cron: '47 17 * * *'
-    - cron: '47 18 * * *'
-    - cron: '47 19 * * *'
-    - cron: '47 20 * * *'
   push:
-    branches: [main, codex/meal-retry-20261125]
-    paths:
-      - get_menu.py
-      - index.html
-      - meal-config.js
-      - meal-status.js
-      - test_2/**
-      - scripts/**
-      - tests/**
-      - requirements.txt
-      - vercel.json
-      - .github/workflows/crawler.yml
-  pull_request:
-    branches: [main]
+    branches: [codex/meal-retry-20261125]
+    paths: [.github/workflows/crawler.yml]
 permissions:
   contents: read
-concurrency:
-  group: meal-data-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
-  validate:
-    if: github.event_name != 'schedule'
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: pip install -r requirements.txt
-      - run: python -m unittest discover -s tests -v
-      - run: node tests/test_meal_status.cjs
-      - run: node scripts/build-static.cjs
-      - run: node --test tests/test_data_contract.cjs
-  collect:
-    needs: validate
-    if: >-
-      ${{ !cancelled() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/meal-retry-20261125') &&
-      (github.event_name == 'schedule' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/codex/meal-retry-20261125' && needs.validate.result == 'success') ||
-      (github.event_name == 'workflow_dispatch' && needs.validate.result == 'success')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - name: Collect shared meal data
-        id: crawl
-        continue-on-error: true
-        env:
-          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
-          SCHEDULE_SLOT: ${{ github.event.schedule }}
+      - shell: bash
         run: |
-          case "$SCHEDULE_SLOT" in
-            "47 17 * * *") python get_menu.py --slot 0 ;;
-            "47 18 * * *") python get_menu.py --slot 1 ;;
-            "47 19 * * *") python get_menu.py --slot 2 ;;
-            "47 20 * * *") python get_menu.py --slot 3 ;;
-            "") python get_menu.py ;;
-            *) exit 1 ;;
-          esac
-      - name: Save meal data or failure status
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add menu.json
-          if git diff --staged --quiet; then exit 0; fi
-          git commit -m "Update shared meal data and crawl status"
-          for attempt in 1 2 3; do
-            git fetch origin "$GITHUB_REF_NAME"
-            git rebase "origin/$GITHUB_REF_NAME"
-            if git push origin "HEAD:$GITHUB_REF_NAME"; then exit 0; fi
-            sleep 2
-          done
-          exit 1
-      - name: Report collection failure
-        if: always() && steps.crawl.outcome == 'failure'
-        run: |
-          echo "::error::Meal collection was incomplete. Previous meals are retained where possible."
-          exit 1
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+          from urllib.parse import urlsplit
+
+          class Page(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.in_title = False
+                  self.skip = 0
+                  self.title = []
+                  self.text = []
+                  self.tables = 0
+                  self.refresh = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  self.in_title |= tag == 'title'
+                  if tag in ('script', 'style'):
+                      self.skip += 1
+                  self.tables += tag == 'table'
+                  if tag == 'meta' and attrs.get('http-equiv', '').lower() == 'refresh':
+                      self.refresh.append(attrs.get('content', ''))
+              def handle_endtag(self, tag):
+                  if tag == 'title':
+                      self.in_title = False
+                  if tag in ('script', 'style'):
+                      self.skip = max(0, self.skip - 1)
+              def handle_data(self, data):
+                  if self.in_title:
+                      self.title.append(data)
+                  if not self.skip:
+                      self.text.append(data)
+
+          for url in (
+              'https://coop.knu.ac.kr/',
+              'https://coop.knu.ac.kr/sub03/sub01_01.html?shop_sqno=35',
+              'https://coop.knu.ac.kr/sub03/sub01_01.html?selDate=&shop_sqno=46',
+          ):
+              request = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+              try:
+                  response = urlopen(request, timeout=10)
+              except HTTPError as error:
+                  response = error
+              except URLError as error:
+                  print(url, type(error.reason).__name__)
+                  continue
+              with response:
+                  body = response.read(256_000)
+                  charset = response.headers.get_content_charset() or 'utf-8'
+                  page = Page()
+                  page.feed(body.decode(charset, errors='replace'))
+                  print(url, 'HTTP', response.status, 'final', urlsplit(response.url).hostname, 'bytes', len(body))
+                  print('title', ' '.join(page.title)[:180], 'tables', page.tables, 'refresh', page.refresh[:1])
+                  if not page.tables or not any('식단' in line for line in page.text):
+                      print('visible-text:', repr(' '.join(' '.join(page.text).split())[:350]))
+          PY
