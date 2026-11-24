@@ -417,7 +417,7 @@
   </footer>
 
   <script src="./meal-config.js"></script>
-  <script src="./meal-status.js?v=20261109-1"></script>
+  <script src="./meal-status.js?v=20261124-1"></script>
   <script>
     let rawData = null;
     let selectedDay = "";
@@ -456,9 +456,9 @@
       if (!days || days.length === 0) return;
 
       let targetIdx = days.findIndex(d => d.replace(/\s/g, "") === currentMenuDay());
-      if (targetIdx === -1) targetIdx = 0;
+      if (targetIdx === -1 && rawData.crawl_status !== "failed") targetIdx = 0;
 
-      selectedDay = days[targetIdx];
+      selectedDay = days[targetIdx] || "";
 
       days.forEach((dayStr, idx) => {
         const m = dayStr.match(/([월화수목금토일])\((.*?)\)/);
@@ -532,6 +532,11 @@
 
       if (!rawData || !rawData.data) {
         container.innerHTML = `<div class="no-data">등록된 식단 정보가 없습니다.</div>`;
+        return;
+      }
+
+      if (!selectedDay) {
+        container.innerHTML = '<div class="no-data">오늘 식단을 아직 확인하지 못했습니다. 위에서 날짜를 선택하면 저장된 식단을 볼 수 있습니다.</div>';
         return;
       }
 

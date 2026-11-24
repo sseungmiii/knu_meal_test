@@ -39,31 +39,46 @@ session.headers.update({
 
 DIRECT_REQUEST_COUNT = 0
 PROXY_REQUEST_COUNT = 0
+PROXY_STOP_REASON = None
+
+
+def response_kind(response):
+    # The hosting error document can be returned after an HTTP redirect.
+    if str(getattr(response, "url", "")).startswith("https://errdoc.gabia.io/"):
+        return "origin_host_error"
+    return f"http_{response.status_code}" if response.status_code != 200 else "invalid_menu_html"
 
 
 def fetch_html(target_url, max_retries=2):
-    global DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT
+    global DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT, PROXY_STOP_REASON
+    direct_reason = "connection_error"
     for attempt in range(1 if SCRAPER_KEY else max_retries):
         try:
             DIRECT_REQUEST_COUNT += 1
             res = session.get(target_url, timeout=8)
             if valid_response(res):
                 return res
-        except requests.RequestException:
-            pass
+            direct_reason = response_kind(res)
+        except requests.RequestException as exc:
+            direct_reason = type(exc).__name__
         if not SCRAPER_KEY and attempt + 1 < max_retries:
             time.sleep(1.5)
 
-    if SCRAPER_KEY:
+    proxy_reason = PROXY_STOP_REASON or "not_configured"
+    if SCRAPER_KEY and PROXY_STOP_REASON is None:
         try:
             PROXY_REQUEST_COUNT += 1
             proxy = f"https://api.scraperapi.com?api_key={SCRAPER_KEY}&url={quote(target_url)}&country_code=kr"
             res = session.get(proxy, timeout=25)
             if valid_response(res):
                 return res
-        except requests.RequestException:
-            pass
-    raise RuntimeError(f"HTML 요청 최종 실패: {target_url}")
+            proxy_reason = response_kind(res)
+            if proxy_reason in {"http_401", "http_403", "http_429", "origin_host_error"}:
+                PROXY_STOP_REASON = proxy_reason
+        except requests.RequestException as exc:
+            proxy_reason = type(exc).__name__
+    # Log categories only: proxy URLs and request exceptions may contain the API key.
+    raise RuntimeError(f"HTML 요청 실패 (direct={direct_reason}, proxy={proxy_reason}): {target_url}")
 
 
 def extract_days(soup):
@@ -354,8 +369,9 @@ def missing_meals(weekly, previous, target):
 
 
 def main(slot=None):
-    global DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT
+    global DIRECT_REQUEST_COUNT, PROXY_REQUEST_COUNT, PROXY_STOP_REASON
     DIRECT_REQUEST_COUNT = PROXY_REQUEST_COUNT = 0
+    PROXY_STOP_REASON = None
     now_kst = datetime.now(timezone(timedelta(hours=9)))
     run_date = now_kst.date().isoformat()
     old_data = {}
@@ -398,7 +414,7 @@ def main(slot=None):
             shops = {shop: shop_id for shop_id, shop in by_id.items()}
         except RuntimeError as e:
             prefetched[url] = e  # don't pay again for the same failed lookup
-            print("[수집] 식당 목록 조회 실패: 기본 식당 목록 사용")
+            print(f"[수집] 식당 목록 조회 실패: {e}")
 
     requested = {shop: shop_id for shop, shop_id in shops.items()
                  if not retry or shop in state["pending"]}
