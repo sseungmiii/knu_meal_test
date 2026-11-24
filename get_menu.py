@@ -137,7 +137,7 @@ def clean_menu_text(text):
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
-def parse_cell(td_el):
+def parse_cell(td_el, meal_hint=None):
     raw_lines = [l.strip() for l in td_el.get_text(separator="\n").split("\n") if l.strip()]
     raw_lines = [l for l in raw_lines if l not in ["분류", "코너", "조식", "중식", "석식", "특식", "정식"]]
     if not raw_lines:
@@ -146,26 +146,32 @@ def parse_cell(td_el):
     full_text = " ".join(raw_lines)
 
     cell_time = ""
-    t_match = raw_time_regex.search(full_text)
+    # A later menu item may have its own sales hours, e.g. ramen at 13:00–17:00.
+    first_item = td_el.select_one("ul.menu_im > li") if meal_hint else None
+    time_text = first_item.get_text(" ", strip=True) if first_item else full_text
+    t_match = raw_time_regex.search(time_text)
     if t_match:
         cell_time = format_time_range(t_match.group(1), t_match.group(2))
 
-    meal = "중식"
-    if "천원의 아침밥" in full_text or "천원의아침밥" in full_text or any(h in cell_time for h in ["08:", "09:", "10:00~11"]):
-        meal = "조식"
-        if not cell_time:
-            cell_time = "09:00~11:00"
-    elif any(h in cell_time for h in ["17:", "18:", "19:"]) or "1식4찬" in full_text:
-        meal = "석식"
-        if not cell_time:
-            cell_time = "17:00~19:00"
+    meal = meal_hint
+    if not meal:
+        breakfast = "천원의 아침밥" in full_text or "천원의아침밥" in full_text
+        if breakfast or any(h in cell_time for h in ["08:", "09:", "10:00~11"]):
+            meal = "조식"
+            cell_time = cell_time or "09:00~11:00"
+        elif any(h in cell_time for h in ["17:", "18:", "19:"]) or "1식4찬" in full_text:
+            meal = "석식"
+            cell_time = cell_time or "17:00~19:00"
+        else:
+            meal = "중식"
 
     items = []
     item_parts = {}
     curr_tokens = []
 
     for line in raw_lines:
-        if raw_time_regex.fullmatch(line) or line.startswith("운영시간"):
+        if (raw_time_regex.fullmatch(line) or line.startswith("운영시간")
+                or re.fullmatch(r"\(?\d{1,2}:\d{2}\s*~\s*\d{1,2}:?\)?", line)):
             continue
 
         cleaned = raw_time_regex.sub("", line).strip()
@@ -233,30 +239,29 @@ def crawl_menus(target_shops, sel_date=None, prefetched=None):
                             "중식": {"time": "", "items": []},
                             "석식": {"time": "", "items": []}} for day in days}
 
-            row_context_meal = None
-
+            meal_labels = {"조식", "중식", "석식"}
             for tbl in soup.find_all("table"):
+                caption = tbl.find("caption", recursive=False)
+                caption_meal = caption.get_text(strip=True) if caption else ""
+                row_context_meal = caption_meal if caption_meal in meal_labels else None
                 for tr in tbl.find_all("tr"):
-                    header_txt = tr.get_text().replace(" ", "")
-                    if "조식" in header_txt:
-                        row_context_meal = "조식"
-                    elif "석식" in header_txt:
-                        row_context_meal = "석식"
-                    elif "중식" in header_txt:
-                        row_context_meal = "중식"
+                    headers = tr.find_all(["th", "td"], recursive=False)
+                    row_label = next((cell.get_text(strip=True) for cell in headers
+                                      if cell.get_text(strip=True) in meal_labels), None)
+                    if row_label:
+                        row_context_meal = row_label
 
-                    tds = tr.find_all("td")
-                    content_tds = [td for td in tds if td.get_text().strip() not in ["조식", "중식", "석식", "분류", "코너"]]
+                    tds = tr.find_all("td", recursive=False)
+                    content_tds = [td for td in tds if td.get_text().strip() not in
+                                   meal_labels | {"분류", "코너"}]
 
                     if len(content_tds) == len(days):
                         for idx, td in enumerate(content_tds):
                             day_key = days[idx]
-                            results = parse_cell(td)
+                            results = parse_cell(td, row_context_meal)
 
                             for res_item in results:
                                 target_meal = res_item["meal"]
-                                if target_meal == "중식" and row_context_meal and not res_item["time"]:
-                                    target_meal = row_context_meal
 
                                 if res_item["time"] and not weekly[day_key][target_meal]["time"]:
                                     weekly[day_key][target_meal]["time"] = res_item["time"]
