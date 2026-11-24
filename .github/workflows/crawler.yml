@@ -1,4 +1,4 @@
-name: Inspect public meal source
+name: Diagnose an existing proxy rejection
 on:
   push:
     branches: [codex/meal-retry-20261125]
@@ -10,62 +10,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - shell: bash
+      - env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
         run: |
           python - <<'PY'
-          from html.parser import HTMLParser
+          import os
+          import re
           from urllib.error import HTTPError, URLError
-          from urllib.request import Request, urlopen
-          from urllib.parse import urlsplit
-
-          class Page(HTMLParser):
-              def __init__(self):
-                  super().__init__()
-                  self.in_title = False
-                  self.skip = 0
-                  self.title = []
-                  self.text = []
-                  self.tables = 0
-                  self.refresh = []
-              def handle_starttag(self, tag, attrs):
-                  attrs = dict(attrs)
-                  self.in_title |= tag == 'title'
-                  if tag in ('script', 'style'):
-                      self.skip += 1
-                  self.tables += tag == 'table'
-                  if tag == 'meta' and attrs.get('http-equiv', '').lower() == 'refresh':
-                      self.refresh.append(attrs.get('content', ''))
-              def handle_endtag(self, tag):
-                  if tag == 'title':
-                      self.in_title = False
-                  if tag in ('script', 'style'):
-                      self.skip = max(0, self.skip - 1)
-              def handle_data(self, data):
-                  if self.in_title:
-                      self.title.append(data)
-                  if not self.skip:
-                      self.text.append(data)
-
-          for url in (
-              'https://coop.knu.ac.kr/',
-              'https://coop.knu.ac.kr/sub03/sub01_01.html?shop_sqno=35',
-              'https://coop.knu.ac.kr/sub03/sub01_01.html?selDate=&shop_sqno=46',
-          ):
-              request = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-              try:
-                  response = urlopen(request, timeout=10)
-              except HTTPError as error:
-                  response = error
-              except URLError as error:
-                  print(url, type(error.reason).__name__)
-                  continue
-              with response:
-                  body = response.read(256_000)
-                  charset = response.headers.get_content_charset() or 'utf-8'
-                  page = Page()
-                  page.feed(body.decode(charset, errors='replace'))
-                  print(url, 'HTTP', response.status, 'final', urlsplit(response.url).hostname, 'bytes', len(body))
-                  print('title', ' '.join(page.title)[:180], 'tables', page.tables, 'refresh', page.refresh[:1])
-                  if not page.tables or not any('식단' in line for line in page.text):
-                      print('visible-text:', repr(' '.join(' '.join(page.text).split())[:350]))
+          from urllib.parse import urlencode
+          from urllib.request import urlopen
+          key = os.environ.get('SCRAPER_API_KEY', '').strip()
+          if not key:
+              print('Proxy configuration missing')
+              raise SystemExit(0)
+          query = urlencode({'api_key': key, 'country_code': 'kr',
+                             'url': 'https://coop.knu.ac.kr/sub03/sub01_01.html?shop_sqno=35'})
+          try:
+              response = urlopen('https://api.scraperapi.com?' + query, timeout=25)
+          except HTTPError as error:
+              response = error
+          except URLError as error:
+              print('Proxy network error:', type(error.reason).__name__)
+              raise SystemExit(0)
+          with response:
+              body = response.read(100000).decode('utf-8', 'replace').casefold()
+              print('PROXY_STATUS', response.status)
+              clues = {
+                  'origin-hosting-denial': r'gabia|요청한 페이지에 접근 권한',
+                  'geo-restriction': r'(geo.?target|country.code|country).{0,100}(plan|not support|only)|(plan|only).{0,100}(geo.?target|country.code)',
+                  'key-error': r'(invalid|incorrect|missing).{0,30}(api key|apikey|api_key)',
+                  'quota-error': r'out of credits|quota exceeded|credits.{0,20}(exhausted|insufficient)|insufficient credits',
+                  'blocked-destination': r'(domain|url|target).{0,45}(not allowed|blocked|not permitted|restricted)',
+                  'menu-table': r'week_t|tstyle_me',
+              }
+              print('PROXY_CLUES', [label for label, pattern in clues.items() if re.search(pattern, body)])
           PY
