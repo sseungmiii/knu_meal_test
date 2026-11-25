@@ -19,4 +19,10 @@ assert.match(messages({...data, data: {A: {}}}), /오늘 식단 미등록: A/);
 assert.equal(context.currentMenuDay(new Date('2026-10-22T15:01:00Z')), '금(10/23)');
 assert.equal(context.menuStatusMessages({...data, days: ['월(10/26)'], is_next_week: true,
   last_checked: '2026-10-25 09:00:00'}, new Date('2026-10-25T03:00:00Z')).join(' '), '');
-console.log('8 status/date checks passed');
+const weekdays = ['월(10/19)', '화(10/20)', '수(10/21)', '목(10/22)', '금(10/23)'];
+const fullWeek = {...data, days: weekdays, last_checked: '2026-10-19 06:00:00',
+  data: { A: Object.fromEntries(weekdays.map(day => [day, data.data.A['금(10/23)']])) }};
+assert.equal(messages(fullWeek), '');
+assert.equal(context.menuStatusMessages(fullWeek, new Date('2026-10-25T03:00:00Z')).join(' '), '');
+assert.match(context.menuStatusMessages(fullWeek, new Date('2026-10-26T03:00:00Z')).join(' '), /오늘 날짜가/);
+console.log('11 status/date checks passed');

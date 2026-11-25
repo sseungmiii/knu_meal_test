@@ -14,6 +14,23 @@ function currentMenuDay(now = new Date()) {
   return `${weekday}(${month}/${day})`;
 }
 
+function hasRegisteredWeek(data, now) {
+  if (data.crawl_status !== 'success' || !data.shops?.length) return false;
+  const monday = new Date(now.getTime() + 9 * 3600000);
+  monday.setUTCHours(0, 0, 0, 0);
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+  const start = monday.getTime() - 9 * 3600000;
+  const checked = Date.parse((data.last_checked || '').replace(' ', 'T') + '+09:00');
+  if (!(checked >= start - 86400000 && checked <= now.getTime())) return false;
+  const weekdays = Array.from({length: 5}, (_, day) => currentMenuDay(new Date(start + day * 86400000)));
+  const normalize = day => day.replace(/\s/g, '');
+  return weekdays.every(day => data.days?.some(label => normalize(label) === day)) &&
+    data.shops.every(shop => {
+      const weekly = Object.fromEntries(Object.entries(data.data?.[shop] || {}).map(([day, meals]) => [normalize(day), meals]));
+      return weekdays.every(day => Object.values(weekly[day] || {}).some(meal => meal.items?.length));
+    });
+}
+
 function showMenuStatus(data) {
   const now = new Date();
   const todayKst = new Date(now.getTime() + 9 * 3600000).toISOString().slice(0, 10);
@@ -22,7 +39,7 @@ function showMenuStatus(data) {
   const confirmed = data.crawl_status === 'success' && checked.startsWith(todayKst) && !messages.length;
   const status = document.getElementById('updatedAt');
   status.textContent = confirmed ? `오늘 식단 확인 완료 · ${checked.slice(11, 16)}`
-    : `최근 확인: ${checked.slice(0, 16) || '정보 없음'}`;
+    : hasRegisteredWeek(data, now) ? '이번 주 식단 등록 완료' : `최근 확인: ${checked.slice(0, 16) || '정보 없음'}`;
   const details = document.createElement('details');
   const summary = document.createElement('summary');
   summary.textContent = '식단 갱신 정보';
@@ -48,8 +65,9 @@ function menuStatusMessages(data, now = new Date()) {
   if (data.crawl_status === 'partial') messages.push('일부 식당의 식단을 확인하지 못했습니다. 이전 식단이 포함될 수 있습니다.');
   const failed = Object.entries(data.shop_status || {}).filter(([, info]) => ['failed', 'partial'].includes(info.status)).map(([shop]) => shop);
   if (failed.length) messages.push(`확인 필요 식당: ${failed.join(', ')}`);
+  const registeredWeek = hasRegisteredWeek(data, now);
   const checked = parseStamp(data.last_checked);
-  if (!Number.isFinite(checked) || checked > now.getTime() || now.getTime() - checked > 30 * 3600000) {
+  if (!registeredWeek && (!Number.isFinite(checked) || checked > now.getTime() || now.getTime() - checked > 30 * 3600000)) {
     messages.push('최근 점검이 없거나 30시간 이상 지났습니다. 자동 수집 상태를 확인해주세요.');
   }
   const updated = parseStamp(data.updated_at);
@@ -58,9 +76,10 @@ function menuStatusMessages(data, now = new Date()) {
   const today = currentMenuDay(now);
   const normalize = day => day.replace(/\s/g, '');
   const nextWeekSunday = today.startsWith('일') && data.is_next_week;
-  if (!(data.days || []).some(day => normalize(day) === today) && !nextWeekSunday) {
+  const registeredWeekend = registeredWeek && /^[토일]/.test(today);
+  if (!(data.days || []).some(day => normalize(day) === today) && !nextWeekSunday && !registeredWeekend) {
     messages.push('오늘 날짜가 식단에 없습니다. 휴무 또는 식단 등록 여부를 확인해주세요.');
-  } else if (!nextWeekSunday) {
+  } else if (!nextWeekSunday && !registeredWeekend) {
     const missing = (data.shops || []).filter(shop => {
       const weekly = data.data?.[shop] || {};
       const key = Object.keys(weekly).find(day => normalize(day) === today);
