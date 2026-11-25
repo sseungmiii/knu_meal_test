@@ -111,6 +111,9 @@ class DataIntegrityTests(unittest.TestCase):
     def setUp(self):
         self.now = crawler.datetime(2026, 10, 23, 9, tzinfo=crawler.timezone(crawler.timedelta(hours=9)))
         self.weekly = {'금(10/23)': {'중식': {'items': ['비빔밥 5,000원'], 'time': '11:00~13:00'}}}
+        self.full_week = {f"{label}(10/{19 + i})": self.weekly['금(10/23)']
+                          for i, label in enumerate("월화수목금")}
+
         self.old = dict(updated_at='2026-10-22 09:00:00', last_checked='2026-10-22 09:00:00',
                         shops=['A', 'B'], days=['금(10/23)'], data={'A': self.weekly, 'B': self.weekly})
 
@@ -168,21 +171,42 @@ class DataIntegrityTests(unittest.TestCase):
                 self.assertEqual(crawler.main(), 1)
             self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['crawl_status'], 'partial')
 
+    def test_registered_week_skips_new_days_and_sunday_without_touching_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'menu.json'
+            cached = dict(self.old, crawl_status='success', days=list(self.full_week),
+                          data={'A': self.full_week, 'B': self.full_week})
+            path.write_text(json.dumps(cached), encoding='utf-8')
+            before = path.read_bytes()
+            with patch.object(crawler, 'DEFAULT_SHOPS', {'A': '35', 'B': '36'}), patch.object(
+                crawler, 'JSON_PATH', str(path)
+            ), patch.object(crawler, 'datetime') as clock, patch.object(
+                crawler, 'fetch_html'
+            ) as fetch, patch.object(crawler, 'crawl_menus') as crawl:
+                for day in (23, 24, 25):
+                    clock.now.return_value = self.now.replace(day=day)
+                    self.assertEqual(crawler.main(0), 0)
+                clock.now.return_value = self.now.replace(day=26)
+                self.assertFalse(crawler.registered_week(cached, clock.now.return_value))
+                fetch.assert_not_called()
+                crawl.assert_not_called()
+            self.assertEqual(path.read_bytes(), before)
+
     def test_scheduled_retries_only_request_pending_and_stop_after_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'menu.json'
-            incomplete = {'목(10/22)': self.weekly['금(10/23)']}
+            incomplete = {day: meals for day, meals in self.full_week.items() if day != '월(10/19)'}
             with patch.object(crawler, 'JSON_PATH', str(path)), patch.object(
                 crawler, 'DEFAULT_SHOPS', {'A': '35', 'B': '36'}
             ), patch.object(crawler, 'datetime') as clock, patch.object(
                 crawler, 'fetch_html', return_value=response(VALID)
             ) as fetch, patch.object(crawler, 'crawl_menus') as crawl:
                 clock.now.return_value = self.now.replace(hour=6)
-                crawl.return_value = ([], {'A': self.weekly, 'B': incomplete}, 2, 2)
+                crawl.return_value = ([], {'A': self.full_week, 'B': incomplete}, 2, 2)
                 self.assertEqual(crawler.main(0), 1)
                 self.assertEqual(json.loads(path.read_text(encoding='utf8'))['collection']['pending'], ['B'])
                 clock.now.return_value = self.now.replace(hour=7)
-                crawl.return_value = ([], {'B': self.weekly}, 1, 1)
+                crawl.return_value = ([], {'B': self.full_week}, 1, 1)
                 self.assertEqual(crawler.main(1), 0)
                 self.assertEqual(crawl.call_args.args[0], {'B': '36'})
                 self.assertEqual(crawler.main(2), 0)

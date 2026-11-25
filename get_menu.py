@@ -319,6 +319,31 @@ def valid_week(days, target):
     return bool(normalized) and len(set(normalized)) == len(normalized) and all(day in expected for day in normalized)
 
 
+def missing_weekdays(weekly, target):
+    monday = target.date() - timedelta(days=target.weekday())
+    by_date = {re.sub(r"\s", "", day): meals for day, meals in weekly.items()}
+    days = [f"{label}({(monday + timedelta(days=i)):%m/%d})" for i, label in enumerate("월화수목금")]
+    return [day for day in days if not any(meal.get("items") for meal in by_date.get(day, {}).values())]
+
+
+def registered_week(saved, target):
+    if saved.get("crawl_status") != "success":
+        return False
+    monday = target.date() - timedelta(days=target.weekday())
+    checked = (saved.get("last_checked") or "")[:10]
+    if not (monday - timedelta(days=1)).isoformat() <= checked < (monday + timedelta(days=7)).isoformat():
+        return False
+    dates = saved.get("days", [])
+    if not valid_week(dates, target):
+        return False
+    data = saved.get("data", {})
+    for shop in set(DEFAULT_SHOPS) | set(saved.get("shops", [])):
+        weekly = data.get(shop, {})
+        if not valid_week(list(weekly), target) or missing_weekdays(weekly, target):
+            return False
+    return True
+
+
 def build_result(old, shops, data, target, now, notice="", next_week=False):
     stamp = now.strftime('%Y-%m-%d %H:%M:%S')
     merged, statuses, days = {}, {}, []
@@ -388,15 +413,20 @@ def main(slot=None):
             print(f'[오류] 기존 식단을 읽을 수 없어 덮어쓰지 않습니다: {e}')
             return 1
 
-    state = old_data.get("collection", {})
-    same_day = state.get("date") == run_date
-    retry = slot is not None and slot > 0 and same_day
-    if slot is not None and same_day and (slot <= state.get("slot", -1) or not state.get("pending")):
-        print("[수집 생략] 이미 처리한 회차 또는 재시도할 식당 없음")
-        return 0
-
     next_week = now_kst.weekday() == 6
     target = now_kst + timedelta(days=1) if next_week else now_kst
+    if registered_week(old_data, now_kst) or (next_week and registered_week(old_data, target)):
+        print("[수집 생략] 이번 주 식단이 이미 등록되었습니다 (직접 0회 / 프록시 0회)")
+        return 0
+
+    state = old_data.get("collection", {})
+    same_day = state.get("date") == run_date
+    pending_shops = state.get("pending", [])
+    retry = slot is not None and slot > 0 and same_day and bool(pending_shops)
+    if slot is not None and same_day and slot <= state.get("slot", -1):
+        print("[수집 생략] 이미 처리한 회차")
+        return 0
+
     shops = dict(DEFAULT_SHOPS)
     prefetched = {}
     if retry:
@@ -422,16 +452,20 @@ def main(slot=None):
             print(f"[수집] 식당 목록 조회 실패: {e}")
 
     requested = {shop: shop_id for shop, shop_id in shops.items()
-                 if not retry or shop in state["pending"]}
+                 if not retry or shop in pending_shops}
     _, data, _, _ = crawl_menus(requested, sel_date=f"{target:%Y-%m-%d}" if next_week else None,
                                 prefetched=prefetched)
     carried = old_data.get("data", {})
     failed = {}
+    missing_dates = {}
     for shop, weekly in data.items():
         if valid_week(list(weekly), target):
             missing = missing_meals(weekly, carried.get(shop, {}), target)
             if missing:
                 failed[shop] = sorted(missing)
+            dates = missing_weekdays(weekly, target)
+            if dates:
+                missing_dates[shop] = dates
     reused = {shop: carried[shop] for shop in shops if shop not in requested and shop in carried}
     result = build_result(old_data, shops, {**reused, **data}, target, now_kst, next_week=next_week)
     for shop in reused:
@@ -448,6 +482,22 @@ def main(slot=None):
             if meal in previous_day:
                 result["data"][shop].setdefault(current_day, {})[meal] = previous_day[meal]
         status.update(status="partial", missing=missing,
+                      last_success=old_data.get("shop_status", {}).get(shop, {}).get("last_success"))
+    for shop, dates in missing_dates.items():
+        status = result["shop_status"][shop]
+        if status["status"] == "failed":
+            continue
+        previous_week = carried.get(shop, {})
+        weekly = result["data"][shop]
+        for date in dates:
+            previous = next((meals for day, meals in previous_week.items()
+                             if re.sub(r"\s", "", day) == date), {})
+            if previous:
+                day = next((day for day in weekly if re.sub(r"\s", "", day) == date), date)
+                weekly[day] = previous
+                if day not in result["days"]:
+                    result["days"].append(day)
+        status.update(status="partial", missing_dates=dates,
                       last_success=old_data.get("shop_status", {}).get(shop, {}).get("last_success"))
     pending = [shop for shop, info in result["shop_status"].items() if info["status"] != "success"]
     if pending and result["crawl_status"] == "success":
